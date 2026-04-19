@@ -41,6 +41,7 @@ import requests                                     # appels HTTP vers l'API
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from dotenv import load_dotenv
 import os
+
 # ---------------------------------------------------------------------------
 # Constantes globales — toutes les valeurs modifiables sont ici
 # (couleurs, typographie, épaisseurs, tailles, textes multilingues)
@@ -860,79 +861,87 @@ class TideApp:
         self.root.after(50, self.redraw_clock)
 
     def redraw_clock(self) -> None:
-        """Redessine l'horloge de marée sur 24 heures (minuit en haut).
+        """Redessine l'horloge de marée 24 h (minuit en haut).
 
-        Contrairement à une horloge classique (12h), cette horloge affiche
-        un cycle de 24 heures : minuit (00:00) est au sommet, midi (12:00)
-        en bas.  L'aiguille indique l'heure actuelle dans ce cycle.
-        Les arcs colorés PM (cyan) et BM (orange) sont positionnés selon
-        les heures réelles des événements de la journée.
-
-        Cette méthode est appelée au démarrage puis toutes les 60 s.
+        Corrections v11 :
+        * Arc de la marée en cours tronqué entre le début et l'aiguille.
+        * 4e marée : arc dessiné même sans 5e événement.
+        * Graduations longues à 3/9/15/21h, étiquettes plus grandes.
+        * Bulles plus grandes, polices augmentées.
         """
         if not hasattr(self, "clock_canvas") or not self.clock_canvas.winfo_exists():
             return
-
         c = self.clock_canvas
         c.update_idletasks()
-        W = c.winfo_width()  or 260
-        H = c.winfo_height() or 260
+        W = c.winfo_width()  or 280
+        H = c.winfo_height() or 280
         c.delete("all")
 
-        # ── Géométrie : réservation de place pour les bulles latérales ─
-        # Le cadran est centré mais décalé pour laisser de la place aux bulles.
-        margin = CLK_MARGIN          # pixels réservés de chaque côté pour les bulles
-        diam   = min(W - 2 * margin, H - 40)   # diamètre utilisable
-        r      = diam // 2
-        cx     = W // 2
-        cy     = H // 2 - 10
+        margin = CLK_MARGIN
+        diam   = min(W - 2 * margin, H - 50)
+        r      = max(diam // 2, 60)
+        cx, cy = W // 2, H // 2 - 6
 
         now   = datetime.now(PARIS)
         state = self._get_clock_state()
 
-        # ── Fond du cadran ─────────────────────────────────────────────
-        c.create_oval(cx - r - 5, cy - r - 5, cx + r + 5, cy + r + 5,
-                      fill=BORDER, outline="")
-        c.create_oval(cx - r, cy - r, cx + r, cy + r,
+        c.create_oval(cx-r-5, cy-r-5, cx+r+5, cy+r+5, fill=BORDER, outline="")
+        c.create_oval(cx-r, cy-r, cx+r, cy+r,
                       fill=SURFACE, outline="#475569", width=CLK_FACE_RING_W)
 
-        # ── Graduations 24 h ───────────────────────────────────────────
-        # Dessinées AVANT les arcs pour être sous eux.
-        # Convention : 0h = haut (−90° en trigonométrie standard).
+        def _trig_rad(dt):
+            frac = (dt.hour*60 + dt.minute) / 1440
+            return math.radians(frac*360 - 90)
+
+        def _trig_rad_now():
+            frac = (now.hour*60 + now.minute + now.second/60) / 1440
+            return math.radians(frac*360 - 90)
+
+        def _tk_angle(dt):
+            frac = (dt.hour*60 + dt.minute) / 1440
+            return 90.0 - frac*360.0
+
+        def _tk_angle_now():
+            frac = (now.hour*60 + now.minute + now.second/60) / 1440
+            return 90.0 - frac*360.0
+
+        # Graduations avant les arcs
+        LABEL_HOURS = {3, 9, 15, 21}
         for h in range(24):
             frac    = h / 24
-            ang_rad = math.radians(frac * 360 - 90)
+            ang_rad = math.radians(frac*360 - 90)
             is_3h   = (h % 3 == 0)
-            is_6h   = (h % 6 == 0)
-            t_len   = (CLK_TICK_MAJOR_LEN if is_3h else CLK_TICK_MINOR_LEN)
-            t_wid   = (CLK_TICK_MAJOR_W   if is_3h else CLK_TICK_MINOR_W)
+            t_len   = CLK_TICK_MAJOR_LEN if is_3h else CLK_TICK_MINOR_LEN
+            t_wid   = CLK_TICK_MAJOR_W   if is_3h else CLK_TICK_MINOR_W
             r_out   = r - 2
             r_in    = r_out - t_len
             c.create_line(
-                cx + math.cos(ang_rad) * r_in,  cy + math.sin(ang_rad) * r_in,
-                cx + math.cos(ang_rad) * r_out, cy + math.sin(ang_rad) * r_out,
-                fill=CLK_TICK_COLOR, width=t_wid,
-            )
-            if is_6h:
-                lx = cx + math.cos(ang_rad) * (r - CLK_TICK_MAJOR_LEN - 10)
-                ly = cy + math.sin(ang_rad) * (r - CLK_TICK_MAJOR_LEN - 10)
+                cx + math.cos(ang_rad)*r_in,  cy + math.sin(ang_rad)*r_in,
+                cx + math.cos(ang_rad)*r_out, cy + math.sin(ang_rad)*r_out,
+                fill=CLK_TICK_COLOR, width=t_wid)
+            if h in {0, 6, 12, 18}:
+                lx = cx + math.cos(ang_rad)*(r - t_len - 13)
+                ly = cy + math.sin(ang_rad)*(r - t_len - 13)
                 c.create_text(lx, ly, text=f"{h:02d}h",
-                              fill=MUTED, font=(FONT, FONT_SZ_CLOCK_GRAD, "bold"))
+                              fill=MUTED, font=(FONT, FONT_SZ_CLOCK_GRAD+1, "bold"))
+            if h in LABEL_HOURS:
+                lx = cx + math.cos(ang_rad)*(r - t_len - 12)
+                ly = cy + math.sin(ang_rad)*(r - t_len - 12)
+                c.create_text(lx, ly, text=f"{h:02d}h",
+                              fill="#556070", font=(FONT, FONT_SZ_CLOCK_GRAD-1))
 
-        # Quarts d'heure
         for h in range(24):
             for m in (15, 30, 45):
-                frac    = (h * 60 + m) / 1440
-                ang_rad = math.radians(frac * 360 - 90)
+                frac    = (h*60 + m) / 1440
+                ang_rad = math.radians(frac*360 - 90)
                 r_out   = r - 2
                 r_in    = r_out - CLK_TICK_TINY_LEN
                 c.create_line(
-                    cx + math.cos(ang_rad) * r_in,  cy + math.sin(ang_rad) * r_in,
-                    cx + math.cos(ang_rad) * r_out, cy + math.sin(ang_rad) * r_out,
-                    fill=CLK_TICK_TINY_COL, width=1,
-                )
+                    cx + math.cos(ang_rad)*r_in,  cy + math.sin(ang_rad)*r_in,
+                    cx + math.cos(ang_rad)*r_out, cy + math.sin(ang_rad)*r_out,
+                    fill=CLK_TICK_TINY_COL, width=1)
 
-        # ── Arcs PM/BM : 4 prochains événements, chevauchement géré ───
+        # Arcs
         now_ts     = now.timestamp()
         all_ev_src = getattr(self, "events_all", self.events)
         future_evs = [
@@ -940,150 +949,112 @@ class TideApp:
             if parse_local(ev["time"]).timestamp() >= now_ts - 3600
         ][:4]
 
-        def _mins_to_tk_angle(dt: datetime) -> float:
-            """Convertit une heure en angle Tkinter.
+        OVERLAP_S = CLK_OVERLAP_MIN * 60
+        ar = r - CLK_ARC_RADIUS_IN
 
-            Tkinter ``create_arc`` mesure les angles en degrés **antihoraires**
-            depuis l'est (3h = 0°).  L'horloge 24h place minuit en haut
-            (= 12h en trigonométrie standard = 90° Tkinter).
+        arcs = []
+        for i in range(len(future_evs)):
+            ev_a = future_evs[i]
+            dt_a = parse_local(ev_a["time"])
+            ts_a = dt_a.timestamp()
+            if i + 1 < len(future_evs):
+                dt_b = parse_local(future_evs[i+1]["time"])
+                ts_b = dt_b.timestamp()
+            else:
+                dt_b = dt_a + timedelta(hours=12, minutes=25)
+                ts_b = dt_b.timestamp()
 
-            Args:
-                dt: Datetime dont on veut l'angle.
+            in_progress = ts_a <= now_ts <= ts_b
+            if ts_b < now_ts:
+                continue
 
-            Returns:
-                Angle en degrés dans le système Tkinter.
-            """
-            frac = (dt.hour * 60 + dt.minute) / 1440  # 0..1
-            # Angle trigonométrique (antihoraire depuis est) : minuit = 90°
-            return 90 - frac * 360   # minuit=90, 6h=0, 12h=−90, 18h=180
-
-        def _mins_to_trig_rad(dt: datetime) -> float:
-            """Angle en radians (convention trigonométrique) pour cos/sin."""
-            frac = (dt.hour * 60 + dt.minute) / 1440
-            return math.radians(frac * 360 - 90)  # minuit=−90° → haut
-
-        OVERLAP_THRESH_S = CLK_OVERLAP_MIN * 60
-        ar = r - CLK_ARC_RADIUS_IN   # rayon de l'arc
-
-        # Détection de chevauchement
-        arcs: list[dict] = []
-        for i in range(len(future_evs) - 1):
-            ev_a  = future_evs[i]
-            ev_b  = future_evs[i + 1]
-            dt_a  = parse_local(ev_a["time"])
-            dt_b  = parse_local(ev_b["time"])
-            ts_a  = dt_a.timestamp()
-            ts_b  = dt_b.timestamp()
+            eff_dt_a = now if in_progress else dt_a
 
             overlap_prev = (i > 0 and
-                abs(ts_a - parse_local(future_evs[i-1]["time"]).timestamp())
-                < OVERLAP_THRESH_S)
-            overlap_next = (i < len(future_evs) - 2 and
-                abs(ts_b - ts_a) < OVERLAP_THRESH_S)
+                abs(ts_a - parse_local(future_evs[i-1]["time"]).timestamp()) < OVERLAP_S)
+            overlap_next = (i+1 < len(future_evs) and
+                abs(parse_local(future_evs[i+1]["time"]).timestamp() - ts_a) < OVERLAP_S)
 
             arcs.append({
-                "dt_a":  dt_a,  "dt_b":  dt_b,
-                "tk_a":  _mins_to_tk_angle(dt_a),
-                "tk_b":  _mins_to_tk_angle(dt_b),
-                "col":   BM_COL if ev_a["type"] == "PM" else PM_COL,
-                "thin":  overlap_prev or overlap_next,
-                "ev_a":  ev_a,  "ev_b":  ev_b,
+                "dt_a_eff": eff_dt_a, "dt_b": dt_b,
+                "col":  BM_COL if ev_a["type"] == "PM" else PM_COL,
+                "thin": overlap_prev or overlap_next,
+                "ev":   ev_a,
             })
 
         for arc in arcs:
             w      = CLK_ARC_WIDTH_THIN if arc["thin"] else CLK_ARC_WIDTH
-            start  = arc["tk_a"]
-            # extent négatif = sens horaire dans Tkinter
-            extent = arc["tk_b"] - arc["tk_a"]
-            # Normaliser : on veut toujours aller dans le sens horaire (extent < 0)
-            if extent > 0:
+            start  = _tk_angle_now() if arc["dt_a_eff"] == now else _tk_angle(arc["dt_a_eff"])
+            end_a  = _tk_angle(arc["dt_b"])
+            extent = end_a - start
+            while extent >= 0:
                 extent -= 360
-            c.create_arc(cx - ar, cy - ar, cx + ar, cy + ar,
+            if extent < -182:
+                extent = -182
+            c.create_arc(cx-ar, cy-ar, cx+ar, cy+ar,
                          start=start, extent=extent,
                          style="arc", outline=arc["col"], width=w)
 
-        # ── Bulles d'événements ancrées sur le bord de l'arc ──────────
+        # Bulles
         for ev in future_evs:
-            dt       = parse_local(ev["time"])
-            trig_rad = _mins_to_trig_rad(dt)
-            col      = PM_COL if ev["type"] == "PM" else BM_COL
-
-            # Point d'ancrage = bord EXTÉRIEUR de l'arc (rayon ar + w/2)
-            anchor_r = ar + CLK_ARC_WIDTH // 2 + 3
-            ax_pt    = cx + math.cos(trig_rad) * anchor_r
-            ay_pt    = cy + math.sin(trig_rad) * anchor_r
-
-            # La bulle va à droite si cos > 0 (côté droit), sinon à gauche
-            right = math.cos(trig_rad) >= 0
-            # Extrémité du trait horizontal (bord du canvas)
-            bx = cx + r + margin - 4 if right else cx - r - margin + 4
-            by = ay_pt
-
-            # Trait de rappel pointillé
-            c.create_line(ax_pt, ay_pt, bx, by, fill=col,
-                          width=1, dash=(3, 2))
-
-            # Bulle arrondie
+            dt    = parse_local(ev["time"])
+            ts_ev = dt.timestamp()
+            if ts_ev < now_ts - 60:
+                continue
+            trig = _trig_rad(dt)
+            col  = PM_COL if ev["type"] == "PM" else BM_COL
+            anchor_r = ar + CLK_ARC_WIDTH//2 + 4
+            ax_pt = cx + math.cos(trig)*anchor_r
+            ay_pt = cy + math.sin(trig)*anchor_r
+            right = math.cos(trig) >= 0
+            bx    = cx+r+margin-6 if right else cx-r-margin+6
+            by    = ay_pt
+            c.create_line(ax_pt, ay_pt, bx, by, fill=col, width=1, dash=(3,2))
             label_txt = f"{ev['type']} {dt.strftime('%H:%M')}"
-            bw = len(label_txt) * CLK_BUBBLE_CHAR_W + CLK_BUBBLE_PX * 2
-            bh = CLK_BUBBLE_BH
-            if right:
-                bx0, bx1 = bx, bx + bw
-            else:
-                bx0, bx1 = bx - bw, bx
-            by0  = by - bh / 2
-            by1  = by + bh / 2
-            rr   = 3
-            pts  = [
-                bx0 + rr, by0,   bx1 - rr, by0,
-                bx1,      by0 + rr, bx1,   by1 - rr,
-                bx1 - rr, by1,   bx0 + rr, by1,
-                bx0,      by1 - rr, bx0,   by0 + rr,
-            ]
+            bw   = len(label_txt)*CLK_BUBBLE_CHAR_W*1.3 + CLK_BUBBLE_PX*2 + 6
+            bh   = CLK_BUBBLE_BH + 4
+            if right: bx0, bx1 = bx, bx+bw
+            else:     bx0, bx1 = bx-bw, bx
+            by0, by1 = by-bh/2, by+bh/2
+            rr = 4
+            pts = [bx0+rr,by0, bx1-rr,by0, bx1,by0+rr, bx1,by1-rr,
+                   bx1-rr,by1, bx0+rr,by1, bx0,by1-rr, bx0,by0+rr]
             c.create_polygon(pts, fill=SURFACE, outline=col, width=1, smooth=True)
-            c.create_text((bx0 + bx1) / 2, (by0 + by1) / 2,
-                          text=label_txt, fill=col,
-                          font=(FONT, FONT_SZ_BUBBLE, "bold"))
+            c.create_text((bx0+bx1)/2, (by0+by1)/2, text=label_txt, fill=col,
+                          font=(FONT, FONT_SZ_BUBBLE+1, "bold"))
 
-        # ── Aiguille de l'heure actuelle ──────────────────────────────
-        now_frac = (now.hour * 60 + now.minute) / 1440
-        hand_rad = math.radians(now_frac * 360 - 90)
-        hand_len = r - CLK_TICK_MAJOR_LEN - 14
-
-        hx = cx + math.cos(hand_rad) * hand_len
-        hy = cy + math.sin(hand_rad) * hand_len
-
-        c.create_line(cx + 1, cy + 1, hx + 2, hy + 2,
+        # Aiguille
+        now_rad  = _trig_rad_now()
+        hand_len = r - CLK_TICK_MAJOR_LEN - 10
+        hx = cx + math.cos(now_rad)*hand_len
+        hy = cy + math.sin(now_rad)*hand_len
+        c.create_line(cx+1,cy+1, hx+2,hy+2,
                       fill=SHADOW_COL, width=CLK_HAND_SHADOW_W, capstyle="round")
-        c.create_line(cx, cy, hx, hy,
+        c.create_line(cx,cy, hx,hy,
                       fill=HAND_COL, width=CLK_HAND_WIDTH, capstyle="round")
-        c.create_oval(hx - 5, hy - 5, hx + 5, hy + 5, fill=HAND_COL, outline="")
-        c.create_oval(cx - 7, cy - 7, cx + 7, cy + 7,
-                      fill=SURFACE, outline=HAND_COL, width=2)
-        c.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill=HAND_COL, outline="")
+        c.create_oval(hx-5,hy-5, hx+5,hy+5, fill=HAND_COL, outline="")
+        c.create_oval(cx-7,cy-7, cx+7,cy+7, fill=SURFACE, outline=HAND_COL, width=2)
+        c.create_oval(cx-2,cy-2, cx+2,cy+2, fill=HAND_COL, outline="")
 
-        # ── Centre du cadran : hauteur, heure, direction ───────────────
+        # Centre
         if state["is_today"] and state["current_height"] is not None:
             direction = state["direction"]
-            h_color   = (PM_COL  if direction == "falling"
-                         else BM_COL if direction == "rising" else ACCENT)
-            dir_lbl   = (I18N_RISING   if direction == "rising"
-                         else I18N_FALLING if direction == "falling" else "")
-            dir_col   = (PM_COL if direction == "rising"
-                         else BM_COL if direction == "falling" else MUTED)
-
-            c.create_text(cx, cy - 16,
+            h_color = (PM_COL  if direction == "falling"
+                       else BM_COL if direction == "rising" else ACCENT)
+            dir_lbl = (I18N_RISING   if direction == "rising"
+                       else I18N_FALLING if direction == "falling" else "")
+            dir_col = (PM_COL if direction == "rising"
+                       else BM_COL if direction == "falling" else MUTED)
+            c.create_text(cx, cy-22,
                           text=f"{state['current_height']:.2f} m",
-                          fill=h_color, font=(FONT, FONT_SZ_CLOCK_H, "bold"))
-            c.create_text(cx, cy + 8,
-                          text=now.strftime("%H:%M"),
-                          fill=TEXT, font=(FONT, FONT_SZ_CLOCK_T, "bold"))
-            c.create_text(cx, cy + 26,
-                          text=dir_lbl, fill=dir_col,
-                          font=(FONT, FONT_SZ_CLOCK_D))
+                          fill=h_color, font=(FONT, FONT_SZ_CLOCK_H+3, "bold"))
+            c.create_text(cx, cy+12, text=now.strftime("%H:%M"),
+                          fill=TEXT, font=(FONT, FONT_SZ_CLOCK_T+2, "bold"))
+            c.create_text(cx, cy+32, text=dir_lbl, fill=dir_col,
+                          font=(FONT, FONT_SZ_CLOCK_D+1))
         else:
-            c.create_text(cx, cy, text=I18N_TIDE_CLOCK,
-                          fill=MUTED, font=(FONT, 8))
+            c.create_text(cx, cy, text=I18N_TIDE_CLOCK, fill=MUTED, font=(FONT, 8))
+
 
     def _get_clock_state(self) -> dict:
         """Calcule l'état courant de l'horloge de marée.
@@ -1434,8 +1405,11 @@ class TideApp:
 
         self._mpl_canvas.draw_idle()
 
-        # Texte de la bulle
-        day_str = x_dt.strftime("%a %d/%m")   # ex. "Mar 13/05"
+        # Texte de la bulle — jour en français via les constantes i18n
+        # strftime("%a") renvoie la locale système (anglais sur Windows sans config)
+        # On construit donc la chaîne manuellement depuis I18N_WEEKDAYS_SHORT.
+        wd_fr  = I18N_WEEKDAYS_SHORT[x_dt.weekday()]   # ex. "Mar"
+        day_str = f"{wd_fr} {x_dt.day:02d}/{x_dt.month:02d}"
         self._tip_time_lbl.config(text=f"📅 {day_str}  🕐 {x_dt.strftime('%H:%M')}")
         self._tip_height_lbl.config(text=f"📏  {h_val:.2f} m", fg=h_color)
 
