@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<!-- saved from url=(0066)https://www.wikiparapente.fr/static/examples/interface-marees.html -->
+<html lang="fr"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marées - Hauteurs d'eau</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-dark: #0284c7;
+      --pm: #22d3ee;
+      --bm: #f97316;
+      --gradient-top: rgba(56, 189, 248, 0.3);
+      --gradient-bot: rgba(56, 189, 248, 0.02);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+    }
+
+    header h1 .wave { font-size: 1.6rem; }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+
+    .date-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: nowrap;
+      width: 100%;
+    }
+
+    select, input[type="date"] {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select:focus, input[type="date"]:focus {
+      border-color: var(--accent);
+    }
+
+    select { min-width: 220px; }
+
+    .nav-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+
+    .nav-btn:hover {
+      background: var(--accent-dark);
+      border-color: var(--accent);
+    }
+
+    .date-nav .nav-btn {
+      flex: 0 0 auto;
+    }
+
+    .date-nav input[type="date"] {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .date-nav .btn-today {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+
+    .btn-today {
+      background: var(--accent-dark);
+      border-color: var(--accent);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .btn-today:hover { background: var(--accent); }
+
+    main {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    /* Tide events table */
+    .tides-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .tide-event {
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      border-left: 4px solid;
+    }
+
+    .tide-event.pm { border-color: var(--pm); }
+    .tide-event.bm { border-color: var(--bm); }
+
+    .tide-event .badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+
+    .tide-event.pm .badge { background: rgba(34,211,238,0.15); color: var(--pm); }
+    .tide-event.bm .badge { background: rgba(249,115,22,0.15); color: var(--bm); }
+
+    .tide-event .info { display: flex; flex-direction: column; gap: 0.15rem; }
+    .tide-event .time { font-size: 1.1rem; font-weight: 700; }
+    .tide-event .height { font-size: 0.85rem; color: var(--text-muted); }
+
+    /* Chart */
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 350px;
+    }
+
+    canvas { width: 100% !important; height: 100% !important; }
+
+    /* Tooltip */
+    .chart-tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.85rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 10;
+      white-space: nowrap;
+    }
+
+    .chart-tooltip .tt-time { font-weight: 700; color: var(--accent); margin-bottom: 0.2rem; }
+    .chart-tooltip .tt-height { color: var(--text); }
+
+    /* Loading / error */
+    .status {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .status.error { color: #f87171; }
+
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Credits */
+    .credits {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      padding: 1rem;
+      line-height: 1.6;
+    }
+
+    .credits a { color: var(--accent); text-decoration: none; }
+    .credits a:hover { text-decoration: underline; }
+
+    /* Calendar mini */
+    .calendar-row {
+      display: grid;
+      grid-template-columns: repeat(7, 38px);
+      gap: 0.35rem;
+      margin-top: 0.75rem;
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .cal-day {
+      width: 38px; height: 38px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      background: var(--bg);
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+
+    .cal-day:hover { border-color: var(--accent); color: var(--text); }
+    .cal-day.active { background: var(--accent-dark); color: #fff; border-color: var(--accent); font-weight: 700; }
+    .cal-day.today { border-color: var(--accent); }
+    .cal-day.empty { visibility: hidden; cursor: default; }
+
+    .cal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      width: calc(7 * 38px + 6 * 0.35rem);
+      max-width: 100%;
+    }
+
+    .cal-header span { font-weight: 600; font-size: 0.95rem; }
+
+    .calendar-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .cal-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 38px);
+      gap: 0.35rem;
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .cal-weekdays span {
+      width: 100%;
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    /* Tide clock */
+    .top-row {
+      display: grid;
+      grid-template-columns: auto 320px 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+      align-items: stretch;
+    }
+
+    .top-row > .card,
+    .top-row > .tide-clock-card,
+    .top-row > .events-card-side {
+      height: 100%;
+    }
+
+    .tide-clock-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .tide-clock-card .card-title { align-self: flex-start; }
+
+    .tide-clock-svg {
+      width: 260px;
+      height: 260px;
+      margin: 0.25rem 0;
+    }
+
+    .clock-status {
+      margin-top: 0.75rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .clock-status .current-height {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .clock-status .tide-direction {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .clock-status .tide-direction.rising { color: var(--pm); }
+    .clock-status .tide-direction.falling { color: var(--bm); }
+
+    .events-card-side {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Responsive */
+    @media (max-width: 800px) {
+      .top-row {
+        grid-template-columns: 1fr;
+      }
+      .tide-clock-svg { width: 220px; height: 220px; }
+    }
+
+    @media (max-width: 700px) {
+      header { padding: 0.75rem 1rem; }
+      main { padding: 0 0.75rem; margin: 1rem auto; }
+      .card { padding: 1rem; }
+      .chart-container { height: 260px; }
+      .controls {
+        width: 100%;
+        justify-content: center;
+      }
+      select {
+        min-width: 160px;
+        width: 100%;
+      }
+      .tide-clock-svg { width: 200px; height: 200px; }
+    }
+  </style>
+<style type="text/css" id="operaUserStyle"></style><style type="text/css">:root img[width="728"][height="90"], :root [href="https://adstub.net/cina777/"], :root [href="https://adstub.net/arab777/"], :root [href="https://adstub.net/ratu89/"], :root [href="https://adstub.net/judi89/"], :root [href^="//mage98rquewz.com/"], :root [href^="//x4pollyxxpush.com/"], :root div.content-showcase-itru-sufficient-2d:not(.q7d5z1l):not(.x9a7b3k), :root div[class*="publift-widget-"]:has(.fuse-slot-sticky), :root span[id^="ezoic-pub-ad-placeholder-"], :root ins.adsbygoogle[data-ad-slot], :root ins.adsbygoogle[data-ad-client], :root img[src^="https://s-img.adskeeper.com/"], :root guj-ad, :root gpt-ad, :root div[ow-ad-unit-wrapper], :root div[id^="zergnet-widget"], :root div[id^="vuukle-ad-"], :root div[id^="taboola-stream-"], :root div[id^="sticky_ad_"], :root div[id^="st"][style^="z-index: 999999999;"], :root div[id^="rc-widget-"], :root div[id^="mrec-leaderboard-"], :root div[id^="gpt_ad_"], :root div[id^="ezoic-pub-ad-"], :root div[id^="dfp-ad-"], :root div[id^="crt-"][style], :root div[id^="apn_native_ad_slot_"], :root div[id^="adspot-"], :root div[id^="adrotate_widgets-"], :root ps-connatix-module, :root div[id^="ad_position_"], :root div[id^="ad-div-"], :root div[id*="ScriptRoot"], :root div[id*="MarketGid"], :root [href="https://adstub.net/rusia777/"], :root div[data-id-advertdfpconf], :root div[data-dfp-id], :root hl-adsense, :root div[data-contentexchange-widget], :root div[data-alias="300x250 Ad 2"], :root div[data-adunit-path], :root div[data-adname], :root div[data-ad-placeholder], :root a[href^="https://osfultrbriolenai.info/"], :root div[class^="Adstyled__AdWrapper-"], :root a[href^="https://go.xlviiirdr.com"], :root div[class$="-adlabel"], :root display-ads, :root a[href^="https://go.grinsbest.com/"], :root citrus-ad-wrapper, :root a[href^="https://s.zlinkd.com/"], :root bottomadblock, :root amp-fx-flying-carpet, :root amp-embed[type="taboola"], :root amp-connatix-player, :root div[id^="google_dfp_"], :root ad-slot, :root a[href^="https://www.purevpn.com/"][href*="&utm_source=aff-"], :root a[href^="https://www.privateinternetaccess.com/"] > img, :root a[href^="https://www.onlineusershielder.com/"], :root a[href^="https://financeads.net/tc.php?"], :root a[href^="https://www.mrskin.com/tour"], :root a[href^="https://www.infowarsstore.com/"] > img, :root a[href^="https://ak.psaltauw.net/"], :root broadstreet-zone-container, :root a[href^="https://www.highperformancecpmgate.com/"], :root amp-ad, :root a[href^="https://www.highcpmrevenuenetwork.com/"], :root a[href^="https://www.get-express-vpn.com/offer/"], :root a[href^="https://lnkxt.bannerator.com/"], :root a[href^="https://www.geekbuying.com/dynamic-ads/"], :root [href^="https://groorsoa.net/"], :root a[href^="https://www.financeads.net/tc.php?"], :root a[href^="https://www.effectiveratecpm.com/"], :root [href^="https://www.herbanomic.com/"] > img, :root a[href^="https://www.dql2clk.com/"], :root a[href^="https://www.nutaku.net/signup/landing/"], :root a[href^="https://www.dating-finder.com/signup/?ai_d="], :root a[href^="https://explore-site.com/"], :root a[href^="https://www.brazzersnetwork.com/landing/"], :root [data-template-type="nativead"], :root a[href^="https://www.adultempire.com/"][href*="?partner_id="], :root a[href^="https://voluum.prom-xcams.com/"], :root a[href^="https://twinrdsyte.com/"], :root div[data-type="_mgwidget"]:not(.eyeo), :root a[href^="https://twinrdsrv.com/"], :root a[href^="https://syndicate.contentsserved.com/"], :root div[data-alias="300x250 Ad 1"], :root a[href^="https://trk.nfl-online-streams.club/"], :root a[href^="https://tracking.avapartner.com/"], :root a[href^="https://track.wg-aff.com"], :root a[href^="https://track.ultravpn.com/"], :root a[href^="https://track.afcpatrk.com/"], :root a[href^="https://track.adform.net/"], :root a[href^="https://torguard.net/aff.php"] > img, :root [data-identity="adhesive-ad"], :root a[href^="https://tc.tradetracker.net/"] > img, :root a[href^="https://tatrck.com/"], :root [href^="https://zstacklife.com/"] img, :root a[href^="https://click.candyoffers.com/"], :root a[href^="https://t.aslnk.link/"], :root a[onmousedown^="this.href='https://paid.outbrain.com/network/redir?"], :root a[href^="https://t.ajump1.com/"], :root a[href^="https://t.adating.link/"], :root a[href^="https://go.trackitalltheway.com/"], :root [href^="https://track.fiverr.com/visit/"] > img, :root a[href^="https://syndication.exoclick.com/"], :root a[href^="https://syndication.dynsrvtbg.com/"], :root .gnt_em_vp_c[data-g-s="vp_dk"], :root div[data-ad-wrapper], :root a[href^="https://svb-analytics.trackerrr.com/"], :root a[onmousedown^="this.href='https://paid.outbrain.com/network/redir?"] + .ob_source, :root a[href^="http://www.iyalc.com/"], :root a[href^="https://claring-loccelkin.com/"], :root a[href^="https://stardomcoit.com/"], :root a[href^="https://track.aftrk5.com/"], :root a[href^="https://slkmis.com/"], :root a[href^="https://myclick-2.com/"], :root a[href^="https://sexynearme.com/"], :root [data-ad-manager-id], :root a[href^="https://s.zlinkr.com/"], :root [href="https://adstub.net/gaza88/"], :root a[href^="https://ad.doubleclick.net/"], :root a[href^="https://static.fleshlight.com/images/banners/"], :root a[href^="https://s.zlink7.com/"], :root a[href^="https://s.ma3ion.com/"], :root a[href^="https://s.eunow4u.com/"], :root a[href^="https://random-affiliate.atimaze.com/"], :root #kt_player > div[style$="display: block;"][style*="inset: 0px;"], :root [href$="/sexdating.php"], :root a[href^="https://quotationfirearmrevision.com/"], :root a[href^="https://pubads.g.doubleclick.net/"], :root a[href^="https://prf.hn/click/"][href*="/camref:"] > img, :root a[href^="https://serve.awmdelivery.com/"], :root a[href^="https://www.dating-finder.com/?ai_d="], :root a[href^="https://prf.hn/click/"][href*="/adref:"] > img, :root [href^="https://ap.octopuspop.com/click/"] > img, :root app-ad, :root a[href^="https://postback1win.com/"], :root a[href^="https://a.adtng.com/"], :root a[href^="https://playnano.online/offerwalls/?ref="], :root a[href^="https://mmwebhandler.aff-online.com/"], :root a[href^="https://www.bet365.com/"][href*="affiliate="], :root a[href^="https://pb-track.com/"], :root a[href^="https://pb-front.com/"], :root a[href^="https://paid.outbrain.com/network/redir?"], :root a[href^="https://streamate.com/landing/click/"], :root a[href^="https://upsups.click/"], :root a[href^="https://ndt5.net/"], :root a[href^="https://natour.naughtyamerica.com/track/"], :root a[href^="https://mediaserver.entainpartners.com/renderBanner.do?"], :root [data-ad-name], :root a[href^="https://loboclick.com/"], :root a[href^="https://lead1.pl/"], :root a[href^="https://landing.brazzersnetwork.com/"], :root a[href^="https://juicyads.in/"], :root a[href^="https://snowdayonline.xyz/"], :root a[href^="https://join.dreamsexworld.com/"], :root a[href^="https://join.bannedsextapes.com/track/"], :root a[href^="https://jaxofuna.com/"], :root a[href^="https://italarizege.xyz/"], :root a[href^="https://identicaldrench.com/"], :root ad-shield-ads, :root a[href^="https://hot-growngames.life/"], :root a[href^="https://helmethomicidal.com/"], :root display-ad-component, :root a[href^="https://golinks.work/"], :root a[href^="https://s.zlinkn.com/"], :root a[href^="https://go.xxxvjmp.com/"], :root a[href^="https://go.xxxjmp.com"], :root a[href^="https://zirdough.net/"], :root [class^="tile-picker__CitrusBannerContainer-sc-"], :root a[href^="https://go.xxxiijmp.com"], :root a[href^="https://go.xtbaffiliates.com/"], :root [data-role="tile-ads-module"], :root a[href^="https://go.xlviirdr.com"], :root a[href^="https://go.xlivrdr.com"], :root a[href^="https://ismlks.com/"], :root [href^="https://www.mypillow.com/"] > img, :root a[href^="https://go.xlirdr.com"], :root [data-css-class="dfp-inarticle"], :root a[href^="https://go.tmrjmp.com"], :root a[href^="https://go.markets.com/visit/?bta="], :root a[href^="https://billing.purevpn.com/aff.php"] > img, :root a[href^="https://go.hpyrdr.com/"], :root a[href^="https://lijavaxa.com/"], :root a[href^="https://go.goaserv.com/"], :root app-large-ad, :root [href^="https://turtlebids.irauctions.com/"] img, :root div[data-adunit], :root a[href^="https://go.etoro.com/"] > img, :root a[href^="https://go.dmzjmp.com"], :root a[href^="https://www.bang.com/?aff="], :root #mgb-container > #mgb, :root a[href^="https://go.admjmp.com"], :root a[href^="https://get.surfshark.net/aff_c?"][href*="&aff_id="] > img, :root a[href^="https://datewhisper.life/"], :root a[href^="https://click.linksynergy.com/fs-bin/"] > img, :root a[href^="https://get-link.xyz/"], :root a[href^="https://www.mrskin.com/account/"], :root a[href^="https://www.adskeeper.com"], :root a[data-redirect^="https://paid.outbrain.com/network/redir?"], :root [href^="https://clicks.affstrack.com/"] > img, :root a[href^="https://engine.phn.doublepimp.com/"], :root a[href^="https://dl-protect.net/"], :root a[href*=".foxqck.com/"], :root a[href^="https://ctosrd.com/"], :root a[href^="https://go.bushheel.com/"], :root a[href^="https://ctjdwm.com/"], :root [href="//sexcams.plus/"], :root a[href^="https://camfapr.com/landing/click/"], :root a[href^="https://prf.hn/click/"][href*="/creativeref:"] > img, :root a[href*="&maxads="], :root a[href^="http://www.adultempire.com/unlimited/promo?"][href*="&partner_id="], :root a[href^="https://1betandgonow.com/"], :root a[href^="https://chaturbate.com/in/?"], :root a[href^="https://t.ajrkm1.com/"], :root a[href^="https://bongacams10.com/track?"], :root a[href*=".g2afse.com/"], :root a[href^="https://bodelen.com/"], :root a[href^="//hoodingluster.com/"], :root a[href^="https://black77854.com/"], :root a[href^="https://getmatchedlocally.com/"], :root app-advertisement, :root a[href^="https://rixofa.com/"], :root a[href^="https://best-experience-cool.com/"], :root [data-taboola-options], :root a[href^="https://believessway.com/"], :root a[href^="https://Click.ggpickaff.com/"], :root a[href^="https://banners.livepartners.com/"], :root a[href^="http://revolvemockerycopper.com/"], :root a[href^="https://awptjmp.com/"], :root a[href^="https://join.sexworld3d.com/track/"], :root a[href^="https://aweptjmp.com/"], :root a[href^="https://ausoafab.net/"], :root a[href^="https://clicks.pipaffiliates.com/"], :root a[href^="https://aj1070.online/"], :root a[href^="https://a.bestcontentoperation.top/"], :root a[href^="https://adultfriendfinder.com/go/"], :root a[href^="https://ads.planetwin365affiliate.com/"], :root a[href^="https://ads.leovegas.com/"], :root a[href^="https://go.xlvirdr.com"], :root img[src^="https://images.purevpnaffiliates.com"], :root a[href^="https://porntubemate.com/"], :root a[href^="https://click.dtiserv2.com/"], :root a[href^="https://clickadilla.com/"], :root a[href^="https://a.medfoodhome.com/"], :root a[href^="https://cam4com.go2cloud.org/"], :root .nya-slot[style], :root a[href^="https://a.bestcontentweb.top/"], :root atf-ad-slot, :root a[href^="https://a2.adform.net/"], :root a[href^="https://a.candyai.love/"], :root .banner-img > .pbl, :root [data-m-ad-id], :root a[href^="https://a-ads.com/"], :root a[href^="https://1winpb.com/"], :root div[id^="optidigital-adslot"], :root [href^="https://wsup.ai/"], :root a[href^="https://123-stream.org/"], :root a[href^="https://in.rabbtrk.com/"], :root a[href^="http://www.h4trck.com/"], :root [href^="https://a.acebet.com/api/click?"], :root a[href^="http://www.friendlyduck.com/AF_"], :root a[href^="http://partners.etoro.com/"], :root [href="https://chaturbate.jjgirls.com/"] > img, :root a[href^="http://cam4com.go2cloud.org/aff_c?"], :root a[href^="https://ads.betfair.com/redirect.aspx?"], :root amp-ad-custom, :root a[href^="http://trk.globwo.online/"], :root a[onclick^="window.location.replace('https://random-affiliate.atimaze.com/"], :root a[href^="https://bongacams2.com/track?"], :root a-ad, :root a[href^="https://offhandpump.com/"], :root a[href^="http://stickingrepute.com/"], :root #slashboxes > .deals-rail, :root div[aria-label="Ads"], :root [href^="http://mypillow.com/"] > img, :root a[href^="http://bongacams.com/track?"], :root a[href^="//startgaming.net/tienda/" i], :root a[href^="https://a.medfoodsafety.com/"], :root a[href^="//go.eabids.com/"], :root a[href^=" https://www.friendlyduck.com/AF_"], :root [data-cl-spot-id], :root a[href*="/jump/next.php?r="], :root a[href^="https://go.nordvpn.net/aff"] > img, :root .\[\&_\.gdprAdTransparencyCogWheelButton\]\:\!pjra-z-\[5\], :root [href^="http://clicks.totemcash.com/"], :root a[href^="https://ad.zanox.com/ppc/"] > img, :root [data-d-ad-id], :root a[href*=".engine.adglare.net/"], :root div[id^="lazyad-"], :root a[href^="http://com-1.pro/"], :root [href^="https://www.profitablegatecpm.com/"], :root a[href*=".cfm?domain="][href*="&fp="], :root a[href^="https://ab.advertiserurl.com/aff/"], :root a[data-oburl^="https://paid.outbrain.com/network/redir?"], :root [id^="section-ad-banner"], :root [id^="ad_slider"], :root a[href^="https://www.goldenfrog.com/vyprvpn?offer_id="][href*="&aff_id="], :root a[href^="https://wmctjd.com/"], :root a[href*="//jjgirls.com/sex/Chaturbate"], :root [id^="ad-wrap-"], :root [href^="https://zone.gotrackier.com/"], :root a[href^="http://sarcasmadvisor.com/"], :root [href^="https://www.restoro.com/"], :root a[href^="https://track.totalav.com/"], :root a[href^="https://ctrdwm.com/"], :root [href^="https://www.targetingpartner.com/"], :root a[href^="https://join.virtuallust3d.com/"], :root .section-subheader > .section-hotel-prices-header, :root [href^="https://www.hostg.xyz/"] > img, :root a[href^="https://bngpt.com/"], :root a[href^="https://www.sheetmusicplus.com/"][href*="?aff_id="], :root a[href^="http://adultfriendfinder.com/go/"], :root a[href^="https://fastestvpn.com/lifetime-special-deal?a_aid="], :root a[href^="https://tour.mrskin.com/"], :root div[id^="ad-position-"], :root a[href^="https://www.toprevenuegate.com/"], :root a[href^="https://bc.game/"], :root a[href^="http://join.brokestraightboys.com/track/"], :root div[id^="div-ads-"], :root [href^="https://rapidgator.net/article/premium/ref/"], :root [href^="https://join.girlsoutwest.com/"], :root a[href^="https://activate-game.com/"], :root .scroll-fixable.rail-right > .deals-rail, :root [data-wpas-zoneid], :root a[href^="https://track.aftrk3.com/"], :root [href^="https://join3.bannedsextapes.com"], :root div[data-adzone], :root div[id^="adngin-"], :root [data-rc-widget], :root span[data-ez-ph-id], :root [href^="https://track.aftrk1.com/"], :root [href^="https://join.playboyplus.com/track/"], :root a[href^="https://go.xxxijmp.com"], :root [href^="https://istlnkcl.com/"], :root a[href^="https://trk.softonixs.xyz/"], :root a[href^="https://iqbroker.com/"][href*="?aff="], :root [href^="https://rpwmct.com/"], :root [href^="https://wct.link/click?"], :root a[href^="https://t.acam.link/"], :root a[href^="https://go.strpjmp.com/"], :root [href^="https://url.totaladblock.com/"], :root a[href^="https://go.rmishe.com/"], :root [href^="https://ilovemyfreedoms.com/landing-"], :root [href="https://adstub.net/indo666/"], :root [href^="https://glersakr.com/"], :root a[href^="https://tm-offers.gamingadult.com/"], :root [href^="https://charmingdatings.life/"], :root [data-id^="div-gpt-ad"], :root a[href^="https://tracker.loropartners.com/"], :root [href^="https://awbbjmp.com/"], :root a[href^="https://www.friendlyduck.com/AF_"], :root [href^="https://ad1.adfarm1.adition.com/"], :root a[href^="https://t.ajrkm3.com/"], :root [href^="https://aads.com/campaigns/"], :root a[href^="https://fc.lc/ref/"], :root a[href^="https://go.bbrdbr.com"], :root a[href^="http://tc.tradetracker.net/"] > img, :root a[href^="https://s.zlink3.com/"], :root a[href^="http://sneakyadministration.com/"], :root [href^="https://www.brighteonstore.com/products/"] img, :root a[href^="https://bngprm.com/"], :root [href^="https://shiftnetwork.infusionsoft.com/go/"] > img, :root [href^="http://www.mypillow.com/"] > img, :root .ob_container .item-container-obpd, :root [id^="div-gpt-ad"], :root [href="https://jdrucker.com/gold"] > img, :root a[href^="https://join.virtualtaboo.com/track/"], :root [id^="ad_sky"], :root [name^="google_ads_iframe"], :root aside[id^="adrotate_widgets-"], :root a[href^="https://www.liquidfire.mobi/"], :root DFP-AD, :root .grid > .container > #aside-promotion, :root [data-type="ad-vertical"], :root [href^="https://go.xlrdr.com"], :root a[href^="https://s.cant3am.com/"], :root [data-testid^="taboola-"], :root [data-testid^="section-AdRowBillboard"], :root a[href^="https://track.1234sd123.com/"], :root zeus-ad, :root [data-testid="prism-ad-wrapper"], :root [href^="https://ad.admitad.com/"], :root [href^="https://mypillow.com/"] > img, :root [data-testid="ad_testID"], :root [data-mobile-ad-id], :root [data-dynamic-ads], :root a[href^="https://gamingadlt.com/?offer="], :root [data-desktop-ad-id], :root a[href^="https://go.rmhfrtnd.com"], :root a[href^="https://pb-imc.com/"], :root a[href^="https://www8.smartadserver.com/"], :root topadblock, :root a[href^="//s.zlinkd.com/"], :root [href^="https://mypatriotsupply.com/"] > img, :root [data-testid="adBanner-wrapper"], :root [href^="https://mylead.global/stl/"] > img, :root a[href*=".adsrv.eacdn.com/"], :root [href^="https://antiagingbed.com/discount/"] > img, :root #teaser1[style^="width:autopx;"], :root [href^="https://www.cloudways.com/en/?id"], :root [data-asg-ins], :root [data-block-type="ad"], :root [data-ad-width], :root a[href^="https://clickins.slixa.com/"], :root [onclick*="content.ad/"], :root a[href^="https://go.cmtaffiliates.com/"], :root [href^="https://optimizedelite.com/"] > img, :root div[data-ad-region], :root AMP-AD, :root [data-ad-cls], :root a[href^="https://www.adxsrve.com/"], :root a[href^="https://click.Ggpickaff.com/"], :root [data-ez-name], :root a[href^="https://go.mnaspm.com/"], :root a[href^="https://service.bv-aff-trx.com/"], :root a[href^="https://6-partner.com/"], :root [class^="s2nPlayer"], :root [href^="https://affiliate.fastcomet.com/"] > img, :root [class^="adDisplay-module"], :root a[href^="https://adclick.g.doubleclick.net/"], :root [data-freestar-ad][id], :root AD-SLOT, :root a[href^="https://combodef.com/"], :root a[href^="https://click.hoolig.app/"], :root a[href^="https://www.googleadservices.com/pagead/aclk?"] > img, :root [data-ad-module], :root a[href^="https://a.bestcontentfood.top/"], :root #kt_player > a[target="_blank"], :root a[href^="https://go.skinstrip.net"][href*="?campaignId="], :root #teaser2[style^="width:autopx;"], :root [data-revive-zoneid], :root a[href^="https://losingoldfry.com/"], :root div[id^="div-gpt-"], :root a[href^="https://gml-grp.com/"], :root .ob_dual_right > .ob_ads_header ~ .odb_div, :root div[data-ad-targeting], :root a[style="width:100%;height:100%;z-index:10000000000000000;position:absolute;top:0;left:0;"], :root [href^="https://www.avantlink.com/click.php"] img, :root [data-testid="commercial-label-taboola"], :root [class^="div-gpt-ad"], :root a[href^="https://traffdaq.com/"], :root #teaser3[style^="width:autopx;"], :root a[href^="https://go.hpyjmp.com"], :root iframe[scrolling="no"][sandbox*="allow-popups allow-modals"][style^="width: 100%; height: 100%; border: none;"], :root [href^="https://mystore.com/"] > img, :root [class^="amp-ad-"], :root div[id*="ScriptRoot"]:not(.eyeo), :root a[href^="https://clixtrac.com/"], :root a[href^="https://wittered-mainging.com/"], :root #teaser3[style="width: 100%;text-align: center;display: scroll;position:fixed;bottom: 0;margin: 0 auto;z-index: 103;"] { display: none !important; }</style></head>
+<body>
+
+<header>
+  <h1><span class="wave">🌊</span> Marées</h1>
+  <div class="controls">
+    <select id="portSelect"><option value="aber-wrac-h">Aber Wrac h</option><option value="anse-de-primel">Anse de Primel</option><option value="arcachon">Arcachon</option><option value="arradon">Arradon</option><option value="arromanches-les-bains">Arromanches Les Bains</option><option value="audierne">Audierne</option><option value="auray-st-goustan">Auray St Goustan</option><option value="baie-de-morlaix-carantec">Baie de Morlaix Carantec</option><option value="baie-de-saint-brieuc-le-legue">Baie de Saint Brieuc Le Legue</option><option value="barfleur">Barfleur</option><option value="belle-ile-le-palais">Belle Ile Le Palais</option><option value="benodet">Benodet</option><option value="berck-plage-fort-mahon">Berck Plage Fort Mahon</option><option value="binic">Binic</option><option value="biscarrosse">Biscarrosse</option><option value="bordeaux">Bordeaux</option><option value="boucau-bayonne-biarritz">Boucau Bayonne Biarritz</option><option value="boulogne-sur-mer">Boulogne sur Mer</option><option value="brest">Brest</option><option value="brignogan-plage">Brignogan Plage</option><option value="calais">Calais</option><option value="camaret-sur-mer">Camaret sur Mer</option><option value="cancale">Cancale</option><option value="cap-ferret">Cap Ferret</option><option value="carteret">Carteret</option><option value="cayeux-sur-mer">Cayeux sur mer</option><option value="cherbourg">Cherbourg</option><option value="concarneau">Concarneau</option><option value="cordouan">Cordouan</option><option value="courseulles-sur-mer">Courseulles sur Mer</option><option value="dahouet">Dahouet</option><option value="dielette">Dielette</option><option value="dieppe">Dieppe</option><option value="dives-sur-mer">Dives sur Mer</option><option value="douarnenez">Douarnenez</option><option value="dunkerque">Dunkerque</option><option value="erquy">Erquy</option><option value="etel">Etel</option><option value="etretat">Etretat</option><option value="fecamp">Fecamp</option><option value="fromentine">Fromentine</option><option value="goury">Goury</option><option value="grandcamp">Grandcamp</option><option value="granville">Granville</option><option value="graveline">Graveline</option><option value="hoedic">Hoedic</option><option value="honfleur">Honfleur</option><option value="houat">Houat</option><option value="ile-d-oleron-la-cotiniere">Ile d Oleron La Cotiniere</option><option value="ile-d-yeu">Ile d Yeu</option><option value="ile-de-groix-port-tudy">Ile de Groix Port Tudy</option><option value="ile-de-re-saint-martin">Ile de Re Saint Martin</option><option value="ile-des-hebihens">Ile des Hebihens</option><option value="iles-saint-marcouf">Iles Saint Marcouf</option><option value="l-aber-benoit">L Aber Benoit</option><option value="la-rochelle-pallice">La Rochelle Pallice</option><option value="la-trinite-sur-mer">La Trinite sur Mer</option><option value="laber-ildut-lanildut">LAber Ildut Lanildut</option><option value="lacanau-large">Lacanau Large</option><option value="le-conquet">Le Conquet</option><option value="le-croisic">Le Croisic</option><option value="le-guilvinec">Le Guilvinec</option><option value="le-havre">Le Havre</option><option value="le-havre-antifer">Le Havre Antifer</option><option value="le-logeo">Le Logeo</option><option value="le-pouldu">Le Pouldu</option><option value="le-pouliguen">Le Pouliguen</option><option value="le-treport">Le Treport</option><option value="les-heaux-de-brehat">Les heaux de Brehat</option><option value="les-sables-d-olonne">Les Sables d Olonne</option><option value="lesconil">Lesconil</option><option value="locmariaquer">Locmariaquer</option><option value="locquemeau">Locquemeau</option><option value="locquirec">Locquirec</option><option value="loctudy">Loctudy</option><option value="lorient">Lorient</option><option value="mimizan">Mimizan</option><option value="morgat">Morgat</option><option value="noirmoutier-l-herbaudiere">Noirmoutier L Herbaudiere</option><option value="omonville-la-rogue">Omonville la Rogue</option><option value="ouistreham">Ouistreham</option><option value="paimpol">Paimpol</option><option value="pauillac">Pauillac</option><option value="penerf">Penerf</option><option value="penfret-iles-de-glenan">Penfret Iles de Glenan</option><option value="penmarch-saint-guenole">Penmarch Saint Guenole</option><option value="perros-guirec">Perros Guirec</option><option value="ploumanach">Ploumanach</option><option value="pointe-d-agon">Pointe d Agon</option><option value="pointe-de-gatseau">Pointe de Gatseau</option><option value="pointe-de-grave-port-bloc">Pointe de Grave Port Bloc</option><option value="pointe-de-saint-gildas">Pointe de Saint Gildas</option><option value="pornic">Pornic</option><option value="pornichet">Pornichet</option><option value="port-beni">Port Beni</option><option value="port-du-crouesty">Port du Crouesty</option><option value="port-en-bessin">Port en Bessin</option><option value="port-louis-locmalo">Port Louis Locmalo</option><option value="port-manech">Port Manech</option><option value="port-navalo">Port Navalo</option><option value="portbail">Portbail</option><option value="portsall">Portsall</option><option value="quiberon-port-haliguen">Quiberon Port Haliguen</option><option value="quiberon-port-maria">Quiberon Port Maria</option><option value="richards">Richards</option><option value="roscoff">Roscoff</option><option value="royan">Royan</option><option value="saint-cast">Saint Cast</option><option value="saint-germain-sur-ay">Saint Germain sur Ay</option><option value="saint-gilles-croix-de-vie">Saint Gilles Croix de Vie</option><option value="saint-jean-de-luz">Saint Jean de Luz</option><option value="saint-malo">Saint Malo</option><option value="saint-nazaire">Saint Nazaire</option><option value="saint-quay-portrieux">Saint Quay Portrieux</option><option value="saint-vaast-la-hougue">Saint Vaast La Hougue</option><option value="saint-valery-en-caux">Saint Valery en Caux</option><option value="trebeurden">Trebeurden</option><option value="treguier">Treguier</option><option value="trehiguier">Trehiguier</option><option value="trez-hir">Trez Hir</option><option value="trouville-deauville">Trouville Deauville</option><option value="vannes">Vannes</option><option value="vierville">Vierville</option><option value="vieux-boucau">Vieux Boucau</option><option value="wissant">Wissant</option></select>
+    <div class="date-nav">
+      <button class="nav-btn" id="prevDay" title="Jour précédent">◀</button>
+      <input type="date" id="datePicker">
+      <button class="nav-btn" id="nextDay" title="Jour suivant">▶</button>
+      <button class="nav-btn btn-today" id="todayBtn">Aujourd'hui</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="content">
+      <div class="top-row">
+        <div class="card calendar-card">
+    <div class="cal-header">
+      <button class="nav-btn" onclick="changeMonth(-1)">◀</button>
+      <span>Avril 2026</span>
+      <button class="nav-btn" onclick="changeMonth(1)">▶</button>
+    </div>
+    <div class="cal-weekdays">
+      <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+    </div>
+    <div class="calendar-row"><div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-01&#39;)">1</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-02&#39;)">2</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-03&#39;)">3</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-04&#39;)">4</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-05&#39;)">5</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-06&#39;)">6</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-07&#39;)">7</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-08&#39;)">8</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-09&#39;)">9</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-10&#39;)">10</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-11&#39;)">11</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-12&#39;)">12</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-13&#39;)">13</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-14&#39;)">14</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-15&#39;)">15</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-16&#39;)">16</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-17&#39;)">17</div><div class="cal-day active" onclick="pickCalDay(&#39;2026-04-18&#39;)">18</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-19&#39;)">19</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-20&#39;)">20</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-21&#39;)">21</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-22&#39;)">22</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-23&#39;)">23</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-24&#39;)">24</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-25&#39;)">25</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-26&#39;)">26</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-27&#39;)">27</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-28&#39;)">28</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-29&#39;)">29</div><div class="cal-day" onclick="pickCalDay(&#39;2026-04-30&#39;)">30</div></div></div>
+        
+    <div class="tide-clock-card">
+      <div class="card-title">Horloge de marée</div>
+      
+  <svg class="tide-clock-svg" viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="glow">
+        <fegaussianblur stdDeviation="3" result="blur"></fegaussianblur>
+        <femerge><femergenode in="blur"></femergenode><femergenode in="SourceGraphic"></femergenode></femerge>
+      </filter>
+      <radialgradient id="clockBg" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#1e293b"></stop>
+        <stop offset="100%" stop-color="#0f172a"></stop>
+      </radialgradient>
+      <lineargradient id="risingGrad" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.5"></stop>
+        <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.15"></stop>
+      </lineargradient>
+      <lineargradient id="fallingGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f97316" stop-opacity="0.5"></stop>
+        <stop offset="100%" stop-color="#f97316" stop-opacity="0.15"></stop>
+      </lineargradient>
+    </defs>
+
+    <!-- Outer ring -->
+    <circle cx="130" cy="130" r="114" fill="none" stroke="#334155" stroke-width="1"></circle>
+    <circle cx="130" cy="130" r="110" fill="url(#clockBg)" stroke="#475569" stroke-width="1.5"></circle>
+
+    <!-- Zone arcs -->
+    <path d="M 130 42 A 88 88 0 0 1 130 218" fill="none" stroke="url(#fallingGrad)" stroke-width="8" stroke-linecap="round"></path>
+    <path d="M 130 218 A 88 88 0 0 1 130 42" fill="none" stroke="url(#risingGrad)" stroke-width="8" stroke-linecap="round"></path>
+
+    <!-- Ticks -->
+    <line x1="130" y1="36" x2="130" y2="22" stroke="#475569" stroke-width="2.5" stroke-linecap="round"></line><line x1="180" y1="43.39745962155614" x2="184" y2="36.46925639128064" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="216.60254037844388" y1="80" x2="223.53074360871938" y2="76" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="224" y1="130" x2="238" y2="130" stroke="#475569" stroke-width="2.5" stroke-linecap="round"></line><line x1="216.60254037844388" y1="180" x2="223.53074360871938" y2="184" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="180" y1="216.60254037844385" x2="184" y2="223.53074360871938" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="130" y1="224" x2="130" y2="238" stroke="#475569" stroke-width="2.5" stroke-linecap="round"></line><line x1="80.00000000000003" y1="216.60254037844388" x2="76.00000000000003" y2="223.53074360871938" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="43.39745962155612" y1="180" x2="36.469256391280624" y2="184" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="36" y1="130" x2="22" y2="130" stroke="#475569" stroke-width="2.5" stroke-linecap="round"></line><line x1="43.39745962155614" y1="79.99999999999999" x2="36.46925639128064" y2="75.99999999999999" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="79.99999999999996" y1="43.397459621556166" x2="75.99999999999994" y2="36.46925639128065" stroke="#475569" stroke-width="1.2" stroke-linecap="round"></line><line x1="156.91718069066215" y1="29.543714065936896" x2="157.95245687107223" y2="25.68001076078062" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="203.53910524340097" y1="56.46089475659906" x2="206.36753236814712" y2="53.632467631852876" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="230.4562859340631" y1="103.08281930933785" x2="234.31998923921938" y2="102.04754312892776" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="230.4562859340631" y1="156.91718069066215" x2="234.31998923921938" y2="157.95245687107223" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="203.53910524340097" y1="203.53910524340094" x2="206.36753236814712" y2="206.36753236814712" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="156.91718069066215" y1="230.4562859340631" x2="157.95245687107223" y2="234.31998923921938" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="103.08281930933784" y1="230.4562859340631" x2="102.04754312892774" y2="234.31998923921938" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="56.46089475659906" y1="203.53910524340097" x2="53.632467631852876" y2="206.36753236814712" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="29.54371406593691" y1="156.91718069066218" x2="25.680010760780632" y2="157.95245687107226" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="29.543714065936882" y1="103.08281930933788" x2="25.680010760780604" y2="102.0475431289278" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="56.460894756599046" y1="56.46089475659906" x2="53.63246763185285" y2="53.632467631852876" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line><line x1="103.08281930933785" y1="29.543714065936896" x2="102.04754312892777" y2="25.68001076078062" stroke="#334155" stroke-width="0.8" stroke-linecap="round"></line>
+
+    <!-- Labels -->
+    <text x="130" y="50" text-anchor="middle" dominant-baseline="central" font-size="11px" font-weight="700" fill="#22d3ee">PM</text><text x="130" y="210" text-anchor="middle" dominant-baseline="central" font-size="11px" font-weight="700" fill="#f97316">BM</text><text x="212" y="130" text-anchor="middle" dominant-baseline="central" font-size="9px" font-weight="400" fill="#64748b">+3h</text><text x="48" y="130" text-anchor="middle" dominant-baseline="central" font-size="9px" font-weight="400" fill="#64748b">+3h</text><text x="169.83431104218687" y="163.42495570370005" text-anchor="middle" dominant-baseline="central" font-size="6.5px" font-weight="600" fill="#f9731688" letter-spacing="0.08em" transform="rotate(-50, 169.83431104218687, 163.42495570370005)">DESCENDANTE</text><text x="90.16568895781315" y="96.57504429629995" text-anchor="middle" dominant-baseline="central" font-size="6.5px" font-weight="600" fill="#22d3ee88" letter-spacing="0.08em" transform="rotate(-50, 90.16568895781315, 96.57504429629995)">MONTANTE</text>
+
+    <!-- Hand shadow -->
+    <line x1="131" y1="131" x2="177.41051865196533" y2="189.9157343878151" stroke="rgba(0,0,0,0.3)" stroke-width="3.5" stroke-linecap="round"></line>
+    <!-- Hand -->
+    <line x1="130" y1="130" x2="176.41051865196533" y2="188.9157343878151" stroke="#f97316" stroke-width="3" stroke-linecap="round" filter="url(#glow)"></line>
+    <!-- Hand dot -->
+    <circle cx="176.41051865196533" cy="188.9157343878151" r="5" fill="#f97316" filter="url(#glow)"></circle>
+    <!-- Center -->
+    <circle cx="130" cy="130" r="6" fill="#1e293b" stroke="#f97316" stroke-width="2"></circle>
+    <circle cx="130" cy="130" r="2.5" fill="#f97316"></circle>
+  </svg>
+      
+      <div class="clock-status">
+        <div class="current-height">1.82 m</div>
+        <div class="tide-direction falling">Marée descendante ▼</div>
+      </div>
+    </div>
+        <div class="events-card-side">
+          <div class="card-title">Marées du jour</div>
+          <div class="tides-grid">
+      <div class="tide-event pm">
+        <div class="badge">PM</div>
+        <div class="info">
+          <div class="time">01:10</div>
+          <div class="height">9.02 m – Pleine Mer</div>
+        </div>
+      </div>
+      <div class="tide-event bm">
+        <div class="badge">BM</div>
+        <div class="info">
+          <div class="time">08:30</div>
+          <div class="height">0.63 m – Basse Mer</div>
+        </div>
+      </div>
+      <div class="tide-event pm">
+        <div class="badge">PM</div>
+        <div class="info">
+          <div class="time">13:30</div>
+          <div class="height">9.06 m – Pleine Mer</div>
+        </div>
+      </div>
+      <div class="tide-event bm">
+        <div class="badge">BM</div>
+        <div class="info">
+          <div class="time">20:50</div>
+          <div class="height">0.68 m – Basse Mer</div>
+        </div>
+      </div></div>
+        </div>
+      </div>
+    <div class="card">
+      <div class="card-title">Courbe de marée</div>
+      <div class="chart-container">
+        <canvas id="tideChart" style="display: block; box-sizing: border-box; height: 350px; width: 1102px;" width="1102" height="350"></canvas>
+        <div class="chart-tooltip" id="chartTooltip" style="left: 84.2174px; top: 43.1602px; opacity: 0;">
+          <div class="tt-time">🕐 01:00</div>
+          <div class="tt-height">📏 8.98 m</div>
+        </div>
+      </div>
+    </div></div>
+</main>
+
+<div class="credits">
+  Les hauteurs d'eau sont distribuées par l'API de <a href="https://api-maree.fr/" target="_blank" rel="noopener">api-maree.fr</a>,
+  calculées à partir de composantes harmoniques fournies par <a href="https://sextant.ifremer.fr/" target="_blank" rel="noopener">IFREMER</a>
+  et diffusées sous licence Creative Commons – Attribution (BY).
+</div>
+
+<!-- Chart.js from CDN -->
+<script src="./Marées - Hauteurs d&#39;eau_files/chart.umd.min.js.téléchargé"></script>
+
+<script>
+const API_BASE = 'https://api-maree.fr';
+const API_KEY = '24df43ed9155cae245fa8fa8ca93bb7d';
+
+const portSelect = document.getElementById('portSelect');
+const datePicker = document.getElementById('datePicker');
+const prevDayBtn = document.getElementById('prevDay');
+const nextDayBtn = document.getElementById('nextDay');
+const todayBtn = document.getElementById('todayBtn');
+const content = document.getElementById('content');
+
+let currentChart = null;
+let currentDate = new Date();
+let sites = [];
+let liveData = null;   // cached water-level data for live updates
+let liveEvents = null; // cached tide events for live updates
+let liveTimer = null;  // setInterval id for 60s refresh
+
+// ─── Helpers ───
+function fmtDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function fmtTime(isoStr) {
+  const d = new Date(isoStr);
+  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function setDate(d) {
+  currentDate = d;
+  datePicker.value = fmtDate(d);
+}
+
+function shiftDay(offset) {
+  const d = new Date(currentDate);
+  d.setDate(d.getDate() + offset);
+  setDate(d);
+  loadData();
+}
+
+// ─── API calls ───
+async function fetchSites() {
+  const url = `${API_BASE}/sites?key=${encodeURIComponent(API_KEY)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Erreur ${res.status}`);
+  const json = await res.json();
+  return json.sites || [];
+}
+
+async function fetchWaterLevels(siteId, dateStr) {
+  const from = `${dateStr}T00:00`;
+  const to = `${dateStr}T23:59`;
+  const url = `${API_BASE}/water-levels?site=${encodeURIComponent(siteId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&step=10&tz=Europe/Paris&key=${encodeURIComponent(API_KEY)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Erreur ${res.status}`);
+  return res.json();
+}
+
+// ─── Detect PM / BM ───
+function findTideEvents(data) {
+  const events = [];
+  if (data.length < 3) return events;
+
+  for (let i = 1; i < data.length - 1; i++) {
+    const prev = data[i - 1].height;
+    const curr = data[i].height;
+    const next = data[i + 1].height;
+
+    if (curr >= prev && curr >= next && (curr > prev || curr > next)) {
+      events.push({ type: 'PM', time: data[i].time, height: curr });
+    }
+    if (curr <= prev && curr <= next && (curr < prev || curr < next)) {
+      events.push({ type: 'BM', time: data[i].time, height: curr });
+    }
+  }
+
+  // Deduplicate events that are within 30 minutes (plateaus)
+  const deduped = [];
+  for (const ev of events) {
+    const last = deduped[deduped.length - 1];
+    if (last && last.type === ev.type) {
+      const diff = (new Date(ev.time) - new Date(last.time)) / 60000;
+      if (diff <= 30) {
+        // Keep the one with the more extreme value
+        if ((ev.type === 'PM' && ev.height > last.height) || (ev.type === 'BM' && ev.height < last.height)) {
+          deduped[deduped.length - 1] = ev;
+        }
+        continue;
+      }
+    }
+    deduped.push(ev);
+  }
+
+  return deduped;
+}
+
+// ─── Render ───
+function showLoading() {
+  content.innerHTML = '<div class="status"><div class="spinner"></div>Chargement des données…</div>';
+}
+
+function showError(msg) {
+  content.innerHTML = `<div class="status error">⚠️ ${msg}</div>`;
+}
+
+function renderCalendar(selectedDate) {
+  const year = selectedDate.getFullYear();
+  const month = selectedDate.getMonth();
+  const today = new Date();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDow = (firstDay.getDay() + 6) % 7; // lundi = 0
+
+  const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+  let html = `<div class="card calendar-card">
+    <div class="cal-header">
+      <button class="nav-btn" onclick="changeMonth(-1)">◀</button>
+      <span>${monthNames[month]} ${year}</span>
+      <button class="nav-btn" onclick="changeMonth(1)">▶</button>
+    </div>
+    <div class="cal-weekdays">
+      <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+    </div>
+    <div class="calendar-row">`;
+
+  for (let i = 0; i < startDow; i++) {
+    html += '<div class="cal-day empty"></div>';
+  }
+
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const isActive = d === selectedDate.getDate();
+    const isToday = d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+    const classes = ['cal-day'];
+    if (isActive) classes.push('active');
+    if (isToday && !isActive) classes.push('today');
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    html += `<div class="${classes.join(' ')}" onclick="pickCalDay('${dateStr}')">${d}</div>`;
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderTideEvents(events) {
+  if (!events.length) return '<p style="color:var(--text-muted)">Aucune marée détectée pour cette journée.</p>';
+
+  let html = '<div class="tides-grid">';
+  for (const ev of events) {
+    const cls = ev.type === 'PM' ? 'pm' : 'bm';
+    const label = ev.type === 'PM' ? 'Pleine Mer' : 'Basse Mer';
+    html += `
+      <div class="tide-event ${cls}">
+        <div class="badge">${ev.type}</div>
+        <div class="info">
+          <div class="time">${fmtTime(ev.time)}</div>
+          <div class="height">${ev.height.toFixed(2)} m – ${label}</div>
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+// ─── Tide Clock SVG ───
+function getTideClockState(data, events) {
+  const now = new Date();
+  const dayStart = new Date(data[0].time);
+  const dayEnd = new Date(data[data.length - 1].time);
+  const isToday = now >= dayStart && now <= dayEnd;
+  const refTime = isToday ? now : dayStart;
+
+  // Find current height by interpolation
+  let currentHeight = null;
+  if (isToday) {
+    for (let i = 0; i < data.length - 1; i++) {
+      const t0 = new Date(data[i].time).getTime();
+      const t1 = new Date(data[i + 1].time).getTime();
+      const nt = now.getTime();
+      if (nt >= t0 && nt <= t1) {
+        const ratio = (nt - t0) / (t1 - t0);
+        currentHeight = data[i].height + ratio * (data[i + 1].height - data[i].height);
+        break;
+      }
+    }
+  }
+
+  // Build full event sequence: we need prev PM and next PM to calculate cycle
+  // For the clock hand, find where we are between the surrounding PM events
+  const allEvents = events.slice();
+  if (!allEvents.length) return { angle: 0, isToday, currentHeight, direction: null, nextEvent: null, progress: 0 };
+
+  // Find previous and next events relative to refTime
+  let prevEvent = null, nextEvent = null;
+  const refMs = refTime.getTime();
+  for (const ev of allEvents) {
+    const evMs = new Date(ev.time).getTime();
+    if (evMs <= refMs) prevEvent = ev;
+    if (evMs > refMs && !nextEvent) nextEvent = ev;
+  }
+
+  // Determine direction (rising = montante, falling = descendante)
+  let direction = null;
+  if (prevEvent && nextEvent) {
+    direction = nextEvent.type === 'PM' ? 'rising' : 'falling';
+  } else if (prevEvent) {
+    direction = prevEvent.type === 'PM' ? 'falling' : 'rising';
+  } else if (nextEvent) {
+    direction = nextEvent.type === 'PM' ? 'rising' : 'falling';
+  }
+
+  // Calculate angle on a 12h25m cycle clock
+  // PM at top (0°), BM at bottom (180°)
+  // Between two consecutive events of same type = full 360°
+  // Between PM->BM = 0° to 180°, between BM->PM = 180° to 360°
+  let angle = 0;
+  if (prevEvent && nextEvent) {
+    const prevMs = new Date(prevEvent.time).getTime();
+    const nextMs = new Date(nextEvent.time).getTime();
+    const progress = Math.max(0, Math.min(1, (refMs - prevMs) / (nextMs - prevMs)));
+
+    if (prevEvent.type === 'PM') {
+      // PM -> BM : 0° to 180°
+      angle = progress * 180;
+    } else {
+      // BM -> PM : 180° to 360°
+      angle = 180 + progress * 180;
+    }
+  } else if (prevEvent && !nextEvent) {
+    // Past the last event of the day
+    if (prevEvent.type === 'PM') angle = 30; // just past high
+    else angle = 210; // just past low
+  } else if (!prevEvent && nextEvent) {
+    // Before the first event of the day
+    if (nextEvent.type === 'PM') angle = 330; // approaching high
+    else angle = 150; // approaching low
+  }
+
+  return { angle, isToday, currentHeight, direction, nextEvent, prevEvent };
+}
+
+function renderTideClock(state) {
+  const { angle, isToday, currentHeight, direction } = state;
+  const cx = 130, cy = 130, r = 110;
+
+  // Convert angle to radians (0° = top = -90° in math coords)
+  const handAngleRad = (angle - 90) * Math.PI / 180;
+  const handLen = 75;
+  const hx = cx + Math.cos(handAngleRad) * handLen;
+  const hy = cy + Math.sin(handAngleRad) * handLen;
+
+  // Small circle at hand end
+  const dotR = 5;
+
+  // Hour tick marks (12h25 cycle divided into ~12 sections)
+  let ticks = '';
+  for (let i = 0; i < 12; i++) {
+    const a = (i * 30 - 90) * Math.PI / 180;
+    const isMajor = i === 0 || i === 3 || i === 6 || i === 9;
+    const outerR = r - 2;
+    const innerR = isMajor ? r - 16 : r - 10;
+    const x1 = cx + Math.cos(a) * innerR;
+    const y1 = cy + Math.sin(a) * innerR;
+    const x2 = cx + Math.cos(a) * outerR;
+    const y2 = cy + Math.sin(a) * outerR;
+    const width = isMajor ? 2.5 : 1.2;
+    ticks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#475569" stroke-width="${width}" stroke-linecap="round"/>`;
+  }
+
+  // Minor ticks (every 15° = 48 ticks for finer detail, but let's do every 15° = 24 half-hours)
+  for (let i = 0; i < 24; i++) {
+    if (i % 2 === 0) continue; // skip major tick positions
+    const a = (i * 15 - 90) * Math.PI / 180;
+    const x1 = cx + Math.cos(a) * (r - 6);
+    const y1 = cy + Math.sin(a) * (r - 6);
+    const x2 = cx + Math.cos(a) * (r - 2);
+    const y2 = cy + Math.sin(a) * (r - 2);
+    ticks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#334155" stroke-width="0.8" stroke-linecap="round"/>`;
+  }
+
+  // Zone arcs — rising (left half) in cyan, falling (right half) in orange
+  // Rising: 180° to 360° (bottom to top going left side) -> SVG arc from bottom to top, counterclockwise
+  // Falling: 0° to 180° (top to bottom going right side) -> SVG arc from top to bottom, clockwise
+  const arcR = r - 22;
+  const arcW = 8;
+
+  // Falling arc (PM -> BM): right side, 0° -> 180° (top to bottom clockwise in clock coords)
+  // In SVG: top point at (cx, cy - arcR), bottom at (cx, cy + arcR), sweep clockwise via right
+  const fallingArc = `M ${cx} ${cy - arcR} A ${arcR} ${arcR} 0 0 1 ${cx} ${cy + arcR}`;
+  // Rising arc (BM -> PM): left side, 180° -> 360° (bottom to top clockwise in clock coords)
+  // In SVG: bottom at (cx, cy + arcR), top at (cx, cy - arcR), sweep clockwise via left
+  const risingArc = `M ${cx} ${cy + arcR} A ${arcR} ${arcR} 0 0 1 ${cx} ${cy - arcR}`;
+
+  // Hour labels at 3h intervals
+  const labels = [
+    { text: 'PM', angle: -90, dist: r - 30, size: '11px', weight: '700', fill: '#22d3ee' },
+    { text: 'BM', angle: 90, dist: r - 30, size: '11px', weight: '700', fill: '#f97316' },
+    { text: '+3h', angle: 0, dist: r - 28, size: '9px', weight: '400', fill: '#64748b' },
+    { text: '+3h', angle: 180, dist: r - 28, size: '9px', weight: '400', fill: '#64748b' },
+  ];
+
+  let labelsSvg = '';
+  for (const l of labels) {
+    const a = l.angle * Math.PI / 180;
+    const lx = cx + Math.cos(a) * l.dist;
+    const ly = cy + Math.sin(a) * l.dist;
+    labelsSvg += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central" font-size="${l.size}" font-weight="${l.weight}" fill="${l.fill}">${l.text}</text>`;
+  }
+
+  // Small directional labels
+  const sideLabels = [
+    { text: 'DESCENDANTE', angle: 40, dist: 52, size: '6.5px', fill: '#f9731688' },
+    { text: 'MONTANTE', angle: 220, dist: 52, size: '6.5px', fill: '#22d3ee88' },
+  ];
+  for (const l of sideLabels) {
+    const a = l.angle * Math.PI / 180;
+    const lx = cx + Math.cos(a) * l.dist;
+    const ly = cy + Math.sin(a) * l.dist;
+    const rot = l.angle > 180 ? l.angle - 270 : l.angle - 90;
+    labelsSvg += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central" font-size="${l.size}" font-weight="600" fill="${l.fill}" letter-spacing="0.08em" transform="rotate(${rot}, ${lx}, ${ly})">${l.text}</text>`;
+  }
+
+  // Glow filter for the hand
+  const handColor = direction === 'rising' ? '#22d3ee' : direction === 'falling' ? '#f97316' : '#38bdf8';
+
+  const svg = `
+  <svg class="tide-clock-svg" viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <radialGradient id="clockBg" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#1e293b"/>
+        <stop offset="100%" stop-color="#0f172a"/>
+      </radialGradient>
+      <linearGradient id="risingGrad" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.15"/>
+      </linearGradient>
+      <linearGradient id="fallingGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f97316" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="#f97316" stop-opacity="0.15"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Outer ring -->
+    <circle cx="${cx}" cy="${cy}" r="${r + 4}" fill="none" stroke="#334155" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#clockBg)" stroke="#475569" stroke-width="1.5"/>
+
+    <!-- Zone arcs -->
+    <path d="${fallingArc}" fill="none" stroke="url(#fallingGrad)" stroke-width="${arcW}" stroke-linecap="round"/>
+    <path d="${risingArc}" fill="none" stroke="url(#risingGrad)" stroke-width="${arcW}" stroke-linecap="round"/>
+
+    <!-- Ticks -->
+    ${ticks}
+
+    <!-- Labels -->
+    ${labelsSvg}
+
+    <!-- Hand shadow -->
+    <line x1="${cx + 1}" y1="${cy + 1}" x2="${hx + 1}" y2="${hy + 1}" stroke="rgba(0,0,0,0.3)" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Hand -->
+    <line x1="${cx}" y1="${cy}" x2="${hx}" y2="${hy}" stroke="${handColor}" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+    <!-- Hand dot -->
+    <circle cx="${hx}" cy="${hy}" r="${dotR}" fill="${handColor}" filter="url(#glow)"/>
+    <!-- Center -->
+    <circle cx="${cx}" cy="${cy}" r="6" fill="#1e293b" stroke="${handColor}" stroke-width="2"/>
+    <circle cx="${cx}" cy="${cy}" r="2.5" fill="${handColor}"/>
+  </svg>`;
+
+  // Status text below the clock
+  let statusHtml = '';
+  if (isToday && currentHeight !== null) {
+    const dirLabel = direction === 'rising' ? 'Marée montante ▲' : direction === 'falling' ? 'Marée descendante ▼' : '';
+    const dirClass = direction || '';
+    statusHtml = `
+      <div class="clock-status">
+        <div class="current-height">${currentHeight.toFixed(2)} m</div>
+        <div class="tide-direction ${dirClass}">${dirLabel}</div>
+      </div>`;
+  } else if (!isToday) {
+    statusHtml = `<div class="clock-status">Horloge basée sur la première marée du jour</div>`;
+  }
+
+  return `
+    <div class="tide-clock-card">
+      <div class="card-title">Horloge de marée</div>
+      ${svg}
+      ${statusHtml}
+    </div>`;
+}
+
+function renderChart(data, events) {
+  const labels = data.map(d => fmtTime(d.time));
+  const heights = data.map(d => d.height);
+
+  const pmIndices = [];
+  const bmIndices = [];
+  for (const ev of events) {
+    const idx = data.findIndex(d => d.time === ev.time);
+    if (idx >= 0) {
+      if (ev.type === 'PM') pmIndices.push(idx);
+      else bmIndices.push(idx);
+    }
+  }
+
+  const pmPoints = new Array(data.length).fill(null);
+  const bmPoints = new Array(data.length).fill(null);
+  pmIndices.forEach(i => pmPoints[i] = heights[i]);
+  bmIndices.forEach(i => bmPoints[i] = heights[i]);
+
+  const html = `
+    <div class="card">
+      <div class="card-title">Courbe de marée</div>
+      <div class="chart-container">
+        <canvas id="tideChart"></canvas>
+        <div class="chart-tooltip" id="chartTooltip">
+          <div class="tt-time"></div>
+          <div class="tt-height"></div>
+        </div>
+      </div>
+    </div>`;
+
+  return { html, setup: () => setupChart(labels, heights, pmPoints, bmPoints, data) };
+}
+
+function setupChart(labels, heights, pmPoints, bmPoints, rawData) {
+  if (currentChart) { currentChart.destroy(); currentChart = null; }
+
+  const ctx = document.getElementById('tideChart').getContext('2d');
+  const tooltip = document.getElementById('chartTooltip');
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, 350);
+  gradient.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+  gradient.addColorStop(1, 'rgba(56, 189, 248, 0.01)');
+
+  // Find "now" index (fractional) for the vertical line
+  function computeNowIndex() {
+    const now = new Date();
+    for (let i = 0; i < rawData.length - 1; i++) {
+      const t0 = new Date(rawData[i].time).getTime();
+      const t1 = new Date(rawData[i + 1].time).getTime();
+      if (now.getTime() >= t0 && now.getTime() <= t1) {
+        return i + (now.getTime() - t0) / (t1 - t0);
+      }
+    }
+    return null;
+  }
+  let nowIndex = computeNowIndex();
+
+  // Expose updater so live refresh can move the line without rebuilding the chart
+  window._updateNowLine = function() {
+    nowIndex = computeNowIndex();
+    if (currentChart) currentChart.update('none');
+  };
+
+  // Chart.js plugin: vertical "now" line
+  const nowLinePlugin = {
+    id: 'nowLine',
+    afterDraw(chart) {
+      if (nowIndex === null) return;
+      const { ctx: c, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
+      const xPos = x.getPixelForValue(nowIndex);
+      if (xPos < left || xPos > right) return;
+
+      // Dashed vertical line
+      c.save();
+      c.beginPath();
+      c.setLineDash([6, 4]);
+      c.lineWidth = 1.5;
+      c.strokeStyle = '#f472b6';
+      c.moveTo(xPos, top);
+      c.lineTo(xPos, bottom);
+      c.stroke();
+      c.setLineDash([]);
+
+      // Dot at current height
+      const nowHeight = heights[Math.floor(nowIndex)] +
+        (nowIndex % 1) * (heights[Math.ceil(nowIndex)] - heights[Math.floor(nowIndex)]);
+      const yPos = chart.scales.y.getPixelForValue(nowHeight);
+      c.beginPath();
+      c.arc(xPos, yPos, 5, 0, Math.PI * 2);
+      c.fillStyle = '#f472b6';
+      c.fill();
+      c.strokeStyle = '#fff';
+      c.lineWidth = 1.5;
+      c.stroke();
+
+      // Label
+      c.fillStyle = '#f472b6';
+      c.font = 'bold 10px system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.fillText('Maintenant', xPos, top - 6);
+
+      c.restore();
+    }
+  };
+
+  currentChart = new Chart(ctx, {
+    type: 'line',
+    plugins: [nowLinePlugin],
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Hauteur (m)',
+          data: heights,
+          borderColor: '#38bdf8',
+          backgroundColor: gradient,
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHitRadius: 8,
+        },
+        {
+          label: 'PM',
+          data: pmPoints,
+          borderColor: 'transparent',
+          backgroundColor: '#22d3ee',
+          pointRadius: 7,
+          pointHoverRadius: 9,
+          pointStyle: 'triangle',
+          showLine: false,
+        },
+        {
+          label: 'BM',
+          data: bmPoints,
+          borderColor: 'transparent',
+          backgroundColor: '#f97316',
+          pointRadius: 7,
+          pointHoverRadius: 9,
+          pointStyle: 'rectRot',
+          showLine: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            color: '#94a3b8',
+            usePointStyle: true,
+            padding: 16,
+            font: { size: 12 },
+            filter: (item) => item.text !== 'Hauteur (m)' || true,
+          }
+        },
+        tooltip: {
+          enabled: false,
+          external: function(context) {
+            const { chart, tooltip: tt } = context;
+            if (tt.opacity === 0) {
+              tooltip.style.opacity = '0';
+              return;
+            }
+
+            const idx = tt.dataPoints?.[0]?.dataIndex;
+            if (idx == null) return;
+
+            const point = rawData[idx];
+            tooltip.querySelector('.tt-time').textContent = `🕐 ${fmtTime(point.time)}`;
+            tooltip.querySelector('.tt-height').textContent = `📏 ${point.height.toFixed(2)} m`;
+
+            const pos = chart.canvas.getBoundingClientRect();
+            const caretX = tt.caretX;
+            const caretY = tt.caretY;
+
+            // Position tooltip
+            let left = caretX + 14;
+            let top = caretY - 40;
+
+            // Keep in bounds of chart container
+            const container = chart.canvas.parentElement;
+            const cRect = container.getBoundingClientRect();
+            const tRect = tooltip.getBoundingClientRect();
+            if (left + tRect.width + 10 > container.clientWidth) {
+              left = caretX - tRect.width - 14;
+            }
+            if (top < 0) top = 4;
+
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+            tooltip.style.opacity = '1';
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#64748b',
+            maxTicksLimit: 13,
+            font: { size: 11 },
+          },
+          grid: { color: 'rgba(51,65,85,0.4)' },
+        },
+        y: {
+          ticks: {
+            color: '#64748b',
+            font: { size: 11 },
+            callback: v => v.toFixed(1) + ' m',
+          },
+          grid: { color: 'rgba(51,65,85,0.4)' },
+        }
+      }
+    }
+  });
+}
+
+// ─── Main data loader ───
+async function loadData() {
+  const siteId = portSelect.value;
+  if (!siteId) return;
+
+  const dateStr = fmtDate(currentDate);
+  showLoading();
+
+  try {
+    const json = await fetchWaterLevels(siteId, dateStr);
+    const data = json.data || [];
+
+    if (!data.length) {
+      showError('Aucune donnée disponible pour cette date et ce port.');
+      return;
+    }
+
+    const events = findTideEvents(data);
+    const calendarHtml = renderCalendar(currentDate);
+    const eventsHtml = renderTideEvents(events);
+    const chart = renderChart(data, events);
+
+    // Tide clock
+    const clockState = getTideClockState(data, events);
+    const clockHtml = renderTideClock(clockState);
+
+    // Layout: calendar, clock and events side by side, then chart
+    const topRow = `
+      <div class="top-row">
+        ${calendarHtml}
+        ${clockHtml}
+        <div class="events-card-side">
+          <div class="card-title">Marées du jour</div>
+          ${eventsHtml}
+        </div>
+      </div>`;
+
+    content.innerHTML = topRow + chart.html;
+    chart.setup();
+
+    // Cache data for live updates & start 60s timer
+    liveData = data;
+    liveEvents = events;
+    startLiveUpdates();
+  } catch (e) {
+    showError(`Impossible de charger les données : ${e.message}`);
+  }
+}
+
+function startLiveUpdates() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = null;
+
+  // Only auto-refresh when viewing today
+  if (!liveData || !liveData.length) return;
+  const dayStart = new Date(liveData[0].time);
+  const dayEnd = new Date(liveData[liveData.length - 1].time);
+  const now = new Date();
+  if (now < dayStart || now > dayEnd) return;
+
+  liveTimer = setInterval(() => {
+    // Update tide clock
+    const clockCard = document.querySelector('.tide-clock-card');
+    if (clockCard && liveData && liveEvents) {
+      const state = getTideClockState(liveData, liveEvents);
+      const tmp = document.createElement('div');
+      tmp.innerHTML = renderTideClock(state);
+      const newCard = tmp.firstElementChild;
+      clockCard.replaceWith(newCard);
+    }
+    // Update chart now-line
+    if (window._updateNowLine) window._updateNowLine();
+  }, 60000);
+}
+
+// ─── Init ───
+async function init() {
+  // Set today's date
+  setDate(new Date());
+
+  // Load sites
+  try {
+    sites = await fetchSites();
+    sites.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+
+    portSelect.innerHTML = '';
+    for (const s of sites) {
+      const opt = document.createElement('option');
+      opt.value = s.site_id;
+      opt.textContent = s.name;
+      portSelect.appendChild(opt);
+    }
+    portSelect.disabled = false;
+
+    // Default port selection
+    const defaultPort = sites.find(s => s.site_id === 'port-en-bessin') || sites[0];
+    if (defaultPort) portSelect.value = defaultPort.site_id;
+
+    await loadData();
+  } catch (e) {
+    showError(`Impossible de charger la liste des ports : ${e.message}`);
+  }
+}
+
+// ─── Events ───
+portSelect.addEventListener('change', loadData);
+datePicker.addEventListener('change', () => {
+  currentDate = new Date(datePicker.value + 'T12:00:00');
+  loadData();
+});
+prevDayBtn.addEventListener('click', () => shiftDay(-1));
+nextDayBtn.addEventListener('click', () => shiftDay(1));
+todayBtn.addEventListener('click', () => { setDate(new Date()); loadData(); });
+
+// Calendar interactions (global)
+window.pickCalDay = function(dateStr) {
+  currentDate = new Date(dateStr + 'T12:00:00');
+  datePicker.value = dateStr;
+  loadData();
+};
+
+window.changeMonth = function(offset) {
+  const d = new Date(currentDate);
+  d.setMonth(d.getMonth() + offset);
+  setDate(d);
+  loadData();
+};
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'ArrowLeft') shiftDay(-1);
+  if (e.key === 'ArrowRight') shiftDay(1);
+});
+
+init();
+</script>
+
+
+
+</body></html>
