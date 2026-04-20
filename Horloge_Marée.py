@@ -1,3 +1,4 @@
+# Horloge-Marée_V3.0.py Version 3.0
 """Application pédagogique d'affichage des marées.
 
 Ce module constitue un exemple complet d'application Python/Tkinter
@@ -8,7 +9,15 @@ le style de documentation Google (Google Python Style Guide).
 
 Dépendances::
 
-    pip install requests matplotlib
+    pip install requests matplotlib python-dotenv
+
+Clé API :
+    Créer un fichier ``.env`` à la racine du projet contenant::
+
+        API-MAREE_KEY=votre_clé_ici
+
+    La clé n'est jamais inscrite dans le code source (bonne pratique
+    de sécurité, essentielle avant tout dépôt sur GitHub).
 
 Données :
     Les hauteurs d'eau sont fournies par l'API https://api-maree.fr,
@@ -17,8 +26,11 @@ Données :
 
 Example::
 
-    python claude07.py
+    python claude13.py
 """
+
+version = ("","Horloge_Marée","py","3.0")
+print(f"{version[0]}/{version[1]}.{version[2]} version [{version[3]}]")
 
 # ---------------------------------------------------------------------------
 # Imports — bibliothèques standard d'abord, puis tierces, puis locales
@@ -26,7 +38,7 @@ Example::
 # ---------------------------------------------------------------------------
 import json          # lecture/écriture du cache local
 import math          # calculs trigonométriques pour l'horloge
-import os            # création du répertoire de cache
+import os            # création du répertoire de cache, lecture variables d'env
 import tkinter as tk
 from tkinter import ttk
 from datetime import datetime, timedelta
@@ -38,9 +50,8 @@ import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import requests                                     # appels HTTP vers l'API
+from dotenv import load_dotenv                      # lecture du fichier .env
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from dotenv import load_dotenv
-import os
 
 # ---------------------------------------------------------------------------
 # Constantes globales — toutes les valeurs modifiables sont ici
@@ -48,12 +59,12 @@ import os
 # ---------------------------------------------------------------------------
 
 # --- API ---
+# La clé est lue depuis le fichier .env (jamais inscrite dans le code source).
+# Créer un fichier .env contenant :  API-MAREE_KEY=votre_clé
+load_dotenv()                                  # charge .env dans os.environ
 API_BASE = "https://api-maree.fr"
-load_dotenv()
-API_KEY = ""
-API_KEY = os.getenv("API-MAREE_KEY")
+API_KEY  = os.getenv("API-MAREE_KEY", "")     # "" si la variable est absente
 
-# --- Fuseau horaire ---
 # --- Fuseau horaire ---
 PARIS = ZoneInfo("Europe/Paris")
 
@@ -111,6 +122,8 @@ CLK_FACE_RING_W    = 2   # épaisseur du cercle extérieur du cadran
 CLK_BUBBLE_BH      = 14  # hauteur des bulles d'événement
 CLK_BUBBLE_PX      = 4   # padding horizontal des bulles
 CLK_BUBBLE_CHAR_W  = 5.5 # largeur estimée d'un caractère en pixels (font 7)
+CLK_BUBBLE_OFFSET  = 6   # distance entre le bord du cadran et la bulle (pixels)
+                          # ↑ augmenter pour éloigner les bulles du cercle
 
 # ── Graphique Matplotlib ─────────────────────────────────────────────────────
 CHART_LINE_W       = 2.4  # épaisseur de la courbe (partie active)
@@ -153,6 +166,19 @@ I18N_MIDNIGHT     = " Minuit"
 I18N_NOW_LABEL    = "Maintenant"
 I18N_RISING_LEGEND   = "Montant"
 I18N_FALLING_LEGEND  = "Descendant"
+# Titres des 4 cartes du haut
+I18N_CARD_CAL     = "Sélection"
+I18N_CARD_CLOCK   = "Horloge de Marée"
+I18N_CARD_EVENTS  = "Inversion de marée"
+I18N_CARD_CHART   = "Niveau des marées"   # suivi de « — J + J+1 » dans le code
+# Format de date longue pour le panneau marées (ex. "Lundi 20 avril 2026")
+I18N_WEEKDAYS_LONG = [
+    "Lundi", "Mardi", "Mercredi", "Jeudi",
+    "Vendredi", "Samedi", "Dimanche",
+]
+# Bouton calendrier
+I18N_TODAY_BTN    = "Aujourd'hui"
+I18N_PORT_LABEL   = "Port :"
 
 # --- Mise en cache ---
 os.makedirs("data", exist_ok=True)   # crée le dossier data/ si absent
@@ -229,6 +255,8 @@ class TideApp:
 
         # Gestion de la mise à jour automatique (horloge + graphique)
         self._live_job: str | None = None
+        # Mémorisation pour détecter le passage à minuit dans _live_tick
+        self._was_today: bool = True
 
         # Navigation mensuelle du mini-calendrier
         self._cal_year: int | None = None
@@ -244,6 +272,12 @@ class TideApp:
         self._ax = None
         self._mpl_canvas = None
 
+        # Mémorisation de l'état "était-on sur aujourd'hui" pour détecter minuit
+        self._was_today: bool = True
+
+        # État pour la détection du passage à minuit
+        self._was_today: bool = True   # on démarre toujours sur aujourd'hui
+
         # Construction de l'interface puis chargement des ports
         self.create_ui()
         self.load_sites()
@@ -255,60 +289,39 @@ class TideApp:
     def create_ui(self) -> None:
         """Crée le squelette de l'interface : en-tête + zone scrollable.
 
-        L'en-tête contient le titre, le sélecteur de port et les boutons
-        de navigation par date.  La zone scrollable accueille les trois
-        cartes (calendrier, horloge, marées) et le graphique.
+        ``self.port_combo`` est initialisé à ``None`` ici.  Il est créé
+        (ou recréé) dans ``draw_calendar()`` à chaque appel de ``render_all()``.
+        Pour que ``load_sites()`` puisse peupler le combobox avant le premier
+        rendu, on crée un combobox **temporaire** invisible qui sera remplacé
+        par le vrai à l'affichage.
         """
-        # ── En-tête ────────────────────────────────────────────────────
+        # ── En-tête minimaliste ────────────────────────────────────────
         header = tk.Frame(self.root, bg=SURFACE)
         header.pack(fill="x")
-
         tk.Label(
-            header, text="🌊  Marées",
-            font=(FONT, 16, "bold"), fg=ACCENT, bg=SURFACE
-        ).pack(side="left", padx=20, pady=10)
+            header, text="🌊  Marées – Hauteurs d'eau",
+            font=(FONT, FONT_SZ_TITLE, "bold"), fg=ACCENT, bg=SURFACE
+        ).pack(side="left", padx=20, pady=8)
 
-        ctrl = tk.Frame(header, bg=SURFACE)
-        ctrl.pack(side="right", padx=16)
-
-        # Combobox de sélection du port
-        self.port_combo = ttk.Combobox(ctrl, width=32, state="readonly", font=(FONT, 9))
-        self.port_combo.pack(side="left", padx=4)
-        self.port_combo.bind("<<ComboboxSelected>>", lambda e: self.load_data())
-
-        # Navigation par date (◀ date ▶ Aujourd'hui)
-        nav = tk.Frame(ctrl, bg=SURFACE)
-        nav.pack(side="left", padx=6)
-        btn_style = dict(
-            bg=BORDER, fg=TEXT, relief="flat",
-            activebackground=ACCENT2, activeforeground="white",
-            bd=0, padx=8, pady=4, cursor="hand2",
-        )
-        tk.Button(nav, text="◀", **btn_style, command=self.prev_day).pack(side="left", padx=2)
-        self.date_label = tk.Label(
-            nav, text=self.current_date.strftime("%Y-%m-%d"),
-            fg=TEXT, bg=SURFACE, font=(FONT, 9), width=12,
-        )
-        self.date_label.pack(side="left", padx=6)
-        tk.Button(nav, text="▶", **btn_style, command=self.next_day).pack(side="left", padx=2)
-        tk.Button(
-            nav, text="Aujourd'hui",
-            bg=ACCENT2, fg="white", relief="flat",
-            activebackground=ACCENT, activeforeground="white",
-            bd=0, padx=10, pady=4, cursor="hand2",
-            command=self.today,
-        ).pack(side="left", padx=(8, 0))
+        # ── Combobox temporaire (non affiché, pour load_sites) ─────────
+        # Tkinter ne supporte pas le re-parenting natif.  On crée un widget
+        # fantôme dans le header pour que load_sites() puisse le peupler.
+        # draw_calendar() créera le vrai combobox visible et copiera les valeurs.
+        self._port_values: list[str] = []   # valeurs disponibles
+        self._port_selected: str    = ""    # port actuellement sélectionné
+        # Combobox fantôme : parent = header mais jamais pack()é
+        self.port_combo = ttk.Combobox(header, width=26, state="readonly",
+                                       font=(FONT, 8))
+        self.port_combo.bind("<<ComboboxSelected>>", lambda e: self._on_port_change())
 
         # ── Zone scrollable ────────────────────────────────────────────
         body = tk.Frame(self.root, bg=BG)
         body.pack(fill="both", expand=True)
 
-        # Canvas principal + scrollbar verticale
         self.canvas_main = tk.Canvas(body, bg=BG, highlightthickness=0)
         vbar = ttk.Scrollbar(body, orient="vertical", command=self.canvas_main.yview)
         self.scrollable_frame = tk.Frame(self.canvas_main, bg=BG)
 
-        # Mise à jour de la scrollregion quand le contenu change de taille
         self.scrollable_frame.bind(
             "<Configure>",
             lambda e: self.canvas_main.configure(
@@ -319,19 +332,14 @@ class TideApp:
             (0, 0), window=self.scrollable_frame, anchor="nw"
         )
         self.canvas_main.configure(yscrollcommand=vbar.set)
-
-        # Le frame interne suit la largeur du canvas (pour les grids responsive)
         self.canvas_main.bind(
             "<Configure>",
             lambda e: self.canvas_main.itemconfig(self._win, width=e.width),
         )
-
-        # Support de la molette souris (Windows)
         self.canvas_main.bind_all(
             "<MouseWheel>",
             lambda e: self.canvas_main.yview_scroll(int(-e.delta / 120), "units"),
         )
-
         self.canvas_main.pack(side="left", fill="both", expand=True)
         vbar.pack(side="right", fill="y")
 
@@ -371,35 +379,53 @@ class TideApp:
     # Chargement des ports (API)
     # ------------------------------------------------------------------
 
-    def load_sites(self) -> None:
-        """Récupère la liste des ports depuis l'API et peuple le combobox.
+    def _on_port_change(self) -> None:
+        """Callback déclenché quand l'utilisateur change de port dans n'importe quel combobox.
 
-        En cas d'erreur réseau, affiche un message d'erreur à l'écran.
-        Le port « boulogne-sur-mer » est sélectionné par défaut s'il est
-        disponible.
+        Sauvegarde la sélection dans ``_port_selected`` (donnée canonique)
+        puis recharge les données.
+        """
+        self._port_selected = self.port_combo.get()
+        self.load_data()
+
+    def load_sites(self) -> None:
+        """Récupère la liste des ports depuis l'API et peuple les comboboxes.
+
+        Les valeurs sont stockées dans ``_port_values`` et ``_port_selected``
+        — des attributs simples qui survivent à la destruction/recréation
+        des widgets Tkinter lors de chaque appel à ``render_all()``.
         """
         try:
             response = requests.get(f"{API_BASE}/sites?key={API_KEY}", timeout=10)
             sites = sorted(response.json().get("sites", []), key=lambda s: s["name"])
-            self.port_combo["values"] = [f"{s['site_id']} | {s['name']}" for s in sites]
+            self._port_values = [f"{s['site_id']} | {s['name']}" for s in sites]
 
-            # Sélection du port par défaut
+            # Port par défaut : Boulogne-sur-Mer si disponible
             default = next(
                 (s for s in sites if s["site_id"] == "boulogne-sur-mer"),
                 sites[0],
             )
-            self.port_combo.set(f"{default['site_id']} | {default['name']}")
+            self._port_selected = f"{default['site_id']} | {default['name']}"
+
+            # Peupler le combobox fantôme (pour get_site_id avant render_all)
+            self.port_combo["values"] = self._port_values
+            self.port_combo.set(self._port_selected)
+
             self.load_data()
         except Exception as exc:  # noqa: BLE001
-            self.show_status(f"Erreur chargement ports : {exc}", ERROR)
+            self.show_status(f"{I18N_ERROR_PORTS} : {exc}", ERROR)
 
     def get_site_id(self) -> str:
-        """Extrait l'identifiant du port sélectionné depuis le combobox.
+        """Retourne l'identifiant du port sélectionné.
+
+        Utilise ``_port_selected`` (attribut persistant) plutôt que
+        ``self.port_combo.get()`` pour être robuste même si le combobox
+        Tkinter vient d'être recréé et n'a pas encore reçu sa valeur.
 
         Returns:
-            Chaîne ``site_id`` de l'API (ex : ``"boulogne-sur-mer"``).
+            Chaîne ``site_id`` (ex : ``"boulogne-sur-mer"``).
         """
-        return self.port_combo.get().split(" | ")[0]
+        return self._port_selected.split(" | ")[0] if self._port_selected else ""
 
     # ------------------------------------------------------------------
     # Chargement et traitement des données
@@ -599,97 +625,132 @@ class TideApp:
     # ------------------------------------------------------------------
 
     def draw_calendar(self, parent: tk.Frame) -> None:
-        """Initialise le mini-calendrier sur le mois de la date courante.
+        """Construit la carte « Sélection » : titre, port, navigation, calendrier.
+
+        Cette carte regroupe toutes les commandes de l'application :
+        * Sélecteur de port (Combobox).
+        * Boutons ◀ / ▶ pour naviguer entre les jours.
+        * Bouton « Aujourd'hui » pour revenir au jour courant.
+        * Mini-calendrier mensuel avec cellules cliquables.
 
         Args:
-            parent: Frame carte qui accueille le calendrier.
+            parent: Frame carte qui accueille l'ensemble.
         """
+        # ── Titre de la carte ──────────────────────────────────────────
+        tk.Label(parent, text=I18N_CARD_CAL, fg=MUTED, bg=SURFACE,
+                 font=(FONT, FONT_SZ_CARD, "bold")).pack(anchor="w", padx=12, pady=(8, 4))
+
+        # ── Sélecteur de port ──────────────────────────────────────────
+        # À chaque render_all() le combobox est recréé dans cette carte.
+        # Les valeurs et la sélection sont relues depuis _port_values et
+        # _port_selected, qui survivent à la destruction des widgets Tkinter.
+        port_frame = tk.Frame(parent, bg=SURFACE)
+        port_frame.pack(fill="x", padx=10, pady=(0, 4))
+        tk.Label(port_frame, text=I18N_PORT_LABEL, fg=MUTED, bg=SURFACE,
+                 font=(FONT, 8)).pack(side="left", padx=(0, 4))
+        self.port_combo = ttk.Combobox(port_frame, width=26, state="readonly",
+                                       font=(FONT, 8))
+        self.port_combo["values"] = self._port_values
+        if self._port_selected:
+            self.port_combo.set(self._port_selected)
+        self.port_combo.bind("<<ComboboxSelected>>", lambda e: self._on_port_change())
+        self.port_combo.pack(side="left", fill="x", expand=True)
+
+        # ── Barre de navigation : ◀  date  ▶  Aujourd'hui ─────────────
+        nav = tk.Frame(parent, bg=SURFACE)
+        nav.pack(fill="x", padx=10, pady=(2, 4))
+        btn_s = dict(bg=BORDER, fg=TEXT, relief="flat", bd=0,
+                     padx=6, pady=3, cursor="hand2",
+                     activebackground=ACCENT2, activeforeground="white")
+        tk.Button(nav, text="◀", **btn_s, command=self.prev_day).pack(side="left")
+        self.date_label = tk.Label(
+            nav, text=self._fmt_date_long(self.current_date),
+            fg=TEXT, bg=SURFACE, font=(FONT, 8), width=18)
+        self.date_label.pack(side="left", padx=4)
+        tk.Button(nav, text="▶", **btn_s, command=self.next_day).pack(side="left")
+        tk.Button(nav, text=I18N_TODAY_BTN,
+                  bg=ACCENT2, fg="white", relief="flat", bd=0,
+                  padx=8, pady=3, cursor="hand2",
+                  activebackground=ACCENT, activeforeground="white",
+                  command=self.today).pack(side="right")
+
+        # ── Calendrier mensuel ─────────────────────────────────────────
         self._cal_year  = self.current_date.year
         self._cal_month = self.current_date.month
+        self._cal_parent = parent    # mémoriser pour _cal_shift
         self._render_calendar(parent)
 
-    def _render_calendar(self, parent: tk.Frame) -> None:
-        """(Re)dessine le contenu du calendrier (appelé aussi lors du changement de mois).
+    def _fmt_date_long(self, d) -> str:
+        """Formate une date en chaîne courte lisible (ex. "Lun 20 Avril 2026")."""
+        wd = I18N_WEEKDAYS_SHORT[d.weekday()]
+        mo = I18N_MONTHS[d.month - 1]
+        return f"{wd} {d.day:02d} {mo} {d.year}"
 
-        Utilise un ``tk.Canvas`` par cellule pour simuler des coins arrondis
-        sur les boutons de jour, ce qui n'est pas nativement supporté par Tkinter.
-        Chaque cellule est un canvas cliquable avec un rectangle à coins arrondis.
+    def _fmt_date_long_full(self, d) -> str:
+        """Formate avec jour complet (ex. "Lundi 20 avril 2026")."""
+        wd = I18N_WEEKDAYS_LONG[d.weekday()]
+        mo = I18N_MONTHS[d.month - 1].lower()
+        return f"{wd} {d.day} {mo} {d.year}"
+
+    def _render_calendar(self, parent: tk.Frame) -> None:
+        """Reconstruit la grille calendrier (mois + jours).
+
+        Ne détruit que les widgets marqués ``_is_cal_grid`` afin de
+        préserver le port_combo et la barre de navigation du haut,
+        construits une seule fois dans ``draw_calendar``.
 
         Args:
-            parent: Frame carte contenant le calendrier.
+            parent: Frame carte du calendrier.
         """
-        # Suppression des widgets existants avant de reconstruire
         for widget in parent.winfo_children():
-            widget.destroy()
+            if getattr(widget, "_is_cal_grid", False):
+                widget.destroy()
 
         year, month = self._cal_year, self._cal_month
         today = datetime.now(PARIS).date()
         sel   = self.current_date
 
-        month_names = I18N_MONTHS
-
-        # ── Ligne de navigation du mois ──────────────────────────────
+        # ── Navigation du mois ────────────────────────────────────────
         hdr = tk.Frame(parent, bg=SURFACE)
-        hdr.pack(fill="x", padx=8, pady=(8, 4))
-        nav_btn_style = dict(
-            bg=BORDER, fg=TEXT, relief="flat", bd=0,
-            padx=6, pady=2, cursor="hand2",
-            activebackground=ACCENT2, activeforeground="white",
-        )
-        tk.Button(
-            hdr, text="◀", **nav_btn_style,
-            command=lambda: self._cal_shift(parent, -1),
-        ).pack(side="left")
-        tk.Label(
-            hdr, text=f"{month_names[month - 1]} {year}",
-            fg=TEXT, bg=SURFACE, font=(FONT, 10, "bold"),  # police agrandie
-        ).pack(side="left", expand=True)
-        tk.Button(
-            hdr, text="▶", **nav_btn_style,
-            command=lambda: self._cal_shift(parent, 1),
-        ).pack(side="right")
+        hdr._is_cal_grid = True
+        hdr.pack(fill="x", padx=8, pady=(2, 2))
+        nb = dict(bg=BORDER, fg=TEXT, relief="flat", bd=0, padx=5, pady=1,
+                  cursor="hand2", activebackground=ACCENT2, activeforeground="white")
+        tk.Button(hdr, text="◀", **nb,
+                  command=lambda: self._cal_shift(parent, -1)).pack(side="left")
+        tk.Label(hdr, text=f"{I18N_MONTHS[month-1]} {year}",
+                 fg=TEXT, bg=SURFACE,
+                 font=(FONT, FONT_SZ_MONTH, "bold")).pack(side="left", expand=True)
+        tk.Button(hdr, text="▶", **nb,
+                  command=lambda: self._cal_shift(parent, 1)).pack(side="right")
 
-        # ── En-têtes + grille dans le même conteneur grid ────────────
-        # Un seul Frame avec grid assure l'alignement parfait
-        # entre les titres Lun/Mar/… et les cellules en dessous.
-        CELL = 36
-        PAD  = 1
-
+        # ── Grille : titres + cellules dans le même Frame ─────────────
         cal_grid = tk.Frame(parent, bg=SURFACE)
-        cal_grid.pack(pady=(4, 2))
+        cal_grid._is_cal_grid = True
+        cal_grid.pack(pady=(2, 4))
 
-        # Titres des jours (ligne 0)
         for col, day_abbr in enumerate(I18N_WEEKDAYS_SHORT):
-            tk.Label(
-                cal_grid, text=day_abbr,
-                fg=MUTED, bg=SURFACE,
-                font=(FONT, 9, "bold"),
-                width=3, anchor="center",
-            ).grid(row=0, column=col, padx=PAD, pady=(0, 3), ipadx=2)
+            tk.Label(cal_grid, text=day_abbr, fg=MUTED, bg=SURFACE,
+                     font=(FONT, FONT_SZ_WDAY, "bold"),
+                     width=3, anchor="center").grid(
+                row=0, column=col, padx=CAL_PAD, pady=(0, 2), ipadx=2)
 
-        # ── Grille des jours (lignes 1+) ────────────────────────────
-        first_weekday    = datetime(year, month, 1).weekday()
-        next_month_first = datetime(year + (month == 12), (month % 12) + 1, 1)
-        days_in_month    = (next_month_first - timedelta(days=1)).day
+        first_wd  = datetime(year, month, 1).weekday()
+        nxt       = datetime(year + (month == 12), (month % 12) + 1, 1)
+        days_in   = (nxt - timedelta(days=1)).day
+        g_col, g_row = first_wd, 1
 
-        grid_col = first_weekday
-        grid_row = 1   # ligne 0 = titres
-
-        for day_num in range(1, days_in_month + 1):
+        for day_num in range(1, days_in + 1):
             cell_date = datetime(year, month, day_num).date()
             self._make_day_cell(
-                cal_grid,
-                text=str(day_num),
-                cell_date=cell_date,
-                is_sel=(cell_date == sel),
-                is_today=(cell_date == today),
-                grid_row=grid_row,
-                grid_col=grid_col,
+                cal_grid, text=str(day_num), cell_date=cell_date,
+                is_sel=(cell_date == sel), is_today=(cell_date == today),
+                grid_row=g_row, grid_col=g_col,
             )
-            grid_col += 1
-            if grid_col == 7:
-                grid_col = 0
-                grid_row += 1
+            g_col += 1
+            if g_col == 7:
+                g_col = 0
+                g_row += 1
 
     def _make_day_cell(
         self,
@@ -810,29 +871,19 @@ class TideApp:
         cv.bind("<Leave>", _hover_out)
 
     def _cal_shift(self, parent: tk.Frame, offset: int) -> None:
-        """Fait avancer ou reculer le mini-calendrier d'un mois.
-
-        Args:
-            parent: Frame carte du calendrier (pour le re-rendu).
-            offset: +1 pour le mois suivant, -1 pour le mois précédent.
-        """
+        """Fait avancer/reculer le calendrier d'un mois et le redessine."""
         month = self._cal_month + offset
         year  = self._cal_year
-        if month > 12:
-            month, year = 1, year + 1
-        if month < 1:
-            month, year = 12, year - 1
+        if month > 12: month, year = 1,  year + 1
+        if month < 1:  month, year = 12, year - 1
         self._cal_year, self._cal_month = year, month
         self._render_calendar(parent)
 
     def _pick_date(self, date_obj) -> None:
-        """Sélectionne une nouvelle date et recharge les données.
-
-        Args:
-            date_obj: Objet ``date`` de la cellule cliquée.
-        """
+        """Sélectionne une date et recharge les données."""
         self.current_date = date_obj
-        self.date_label.config(text=self.current_date.strftime("%Y-%m-%d"))
+        if hasattr(self, "date_label"):
+            self.date_label.config(text=self._fmt_date_long(self.current_date))
         self.load_data()
 
     # ------------------------------------------------------------------
@@ -840,19 +891,32 @@ class TideApp:
     # ------------------------------------------------------------------
 
     def draw_clock(self, parent: tk.Frame) -> None:
-        """Crée le canevas de l'horloge et planifie le premier dessin.
+        """Crée la carte horloge.
 
-        Le dessin est différé de 50 ms via ``after`` afin que Tkinter ait
-        le temps de calculer les dimensions réelles du canvas avant qu'on
-        l'utilise.
+        Si la date affichée n'est pas aujourd'hui, l'horloge est muette :
+        pas d'aiguille, pas d'arcs, pas de bulles — un simple message
+        indique que l'horloge n'est disponible que pour le jour courant.
+        Cela évite d'afficher des informations incorrectes pour des dates
+        passées ou futures.
 
         Args:
             parent: Frame carte de l'horloge.
         """
         tk.Label(
-            parent, text=I18N_TIDE_CLOCK,
+            parent, text=I18N_CARD_CLOCK,
             fg=MUTED, bg=SURFACE, font=(FONT, FONT_SZ_CARD, "bold"),
         ).pack(anchor="w", padx=12, pady=(8, 2))
+
+        today = datetime.now(PARIS).date()
+        if self.current_date != today:
+            # Horloge muette : date non courante
+            tk.Label(
+                parent,
+                text="⏸  Horloge disponible\nuniquement pour aujourd'hui",
+                fg=MUTED, bg=SURFACE, font=(FONT, 9),
+                justify="center",
+            ).pack(expand=True, pady=20)
+            return
 
         self.clock_canvas = tk.Canvas(parent, bg=SURFACE, highlightthickness=0)
         self.clock_canvas.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -919,6 +983,16 @@ class TideApp:
         c.create_oval(cx-r, cy-r, cx+r, cy+r,
                       fill=SURFACE, outline="#475569", width=CLK_FACE_RING_W)
 
+        # Si la date affichée n'est pas aujourd'hui, on ne dessine que
+        # le cadran vide avec un message central (pas d'arcs ni d'aiguille).
+        if not state["is_today"]:
+            c.create_text(cx, cy - 10, text=I18N_CARD_CLOCK,
+                          fill=MUTED, font=(FONT, 9, "bold"))
+            c.create_text(cx, cy + 10,
+                          text=self._fmt_date_long(self.current_date),
+                          fill=MUTED, font=(FONT, 8))
+            return   # sortie anticipée : pas de graduations, arcs ni aiguille
+
         # ── Graduations 24 h ───────────────────────────────────────────
         for h in range(24):
             frac    = h / 24.0
@@ -955,6 +1029,19 @@ class TideApp:
                     cx + math.cos(ang_rad)*r_in,  cy + math.sin(ang_rad)*r_in,
                     cx + math.cos(ang_rad)*r_out, cy + math.sin(ang_rad)*r_out,
                     fill=CLK_TICK_TINY_COL, width=1)
+
+        # ── Horloge muette hors du jour courant ───────────────────────
+        # L'horloge est un cadran temps réel : elle n'a de sens que pour
+        # aujourd'hui.  Pour un autre jour, on affiche le cadran vide avec
+        # le nom du jour sélectionné et on retourne sans dessiner les arcs.
+        if not state["is_today"]:
+            c.create_text(cx, cy - 10,
+                          text=I18N_CARD_CLOCK, fill=MUTED,
+                          font=(FONT, 10, "bold"))
+            c.create_text(cx, cy + 14,
+                          text=self._fmt_date_long(self.current_date),
+                          fill="#475569", font=(FONT, 8))
+            return
 
         # ── Arcs PM/BM ─────────────────────────────────────────────────
         # Principe : on prend les événements (passés récents + futurs)
@@ -1036,7 +1123,7 @@ class TideApp:
                 ay_pt = cy + math.sin(trig) * anchor_r
 
                 right = math.cos(trig) >= 0
-                bx    = cx + r + margin - 6 if right else cx - r - margin + 6
+                bx    = cx + r + margin - CLK_BUBBLE_OFFSET if right else cx - r - margin + CLK_BUBBLE_OFFSET
                 by    = ay_pt
 
                 c.create_line(ax_pt, ay_pt, bx, by,
@@ -1072,7 +1159,19 @@ class TideApp:
                       fill=SURFACE, outline=HAND_COL, width=2)
         c.create_oval(cx-2, cy-2, cx+2, cy+2, fill=HAND_COL, outline="")
 
-        # ── Textes centraux ────────────────────────────────────────────
+        # ── Aiguille et arcs seulement si date == aujourd'hui ────────
+        # Si l'utilisateur consulte un jour passé ou futur, l'horloge
+        # affiche uniquement le cadran vide (sans aiguille ni arcs),
+        # car il n'y a pas de "maintenant" à pointer.
+        if not state["is_today"]:
+            c.create_text(cx, cy, text="—", fill=MUTED,
+                          font=(FONT, 24, "bold"))
+            c.create_text(cx, cy + 28,
+                          text=self._fmt_date_long(self.current_date),
+                          fill=MUTED, font=(FONT, 7))
+            return   # on s'arrête ici : pas d'arcs, pas d'aiguille
+
+        # ── Textes centraux (seulement si aujourd'hui) ────────────────
         if state["is_today"] and state["current_height"] is not None:
             direction = state["direction"]
             h_color = (PM_COL  if direction == "falling"
@@ -1093,8 +1192,13 @@ class TideApp:
             c.create_text(cx, cy + 36,
                           text=dir_lbl, fill=dir_col,
                           font=(FONT, FONT_SZ_CLOCK_D+1))
-        else:
-            c.create_text(cx, cy, text=I18N_TIDE_CLOCK,
+        elif not state["is_today"]:
+            # Horloge muette quand on consulte une date passée ou future :
+            # aucune aiguille, aucun arc, message informatif au centre.
+            c.create_text(cx, cy - 10, text=I18N_TIDE_CLOCK,
+                          fill=MUTED, font=(FONT, 9, "bold"))
+            c.create_text(cx, cy + 12,
+                          text=self._fmt_date_long(self.current_date),
                           fill=MUTED, font=(FONT, 8))
 
 
@@ -1192,7 +1296,7 @@ class TideApp:
             parent: Frame carte des marées.
         """
         today = datetime.now(PARIS).date()
-        title = I18N_NEXT_TIDES if self.current_date == today else I18N_TIDES_J_J1
+        title = I18N_CARD_EVENTS
         tk.Label(parent, text=title, fg=MUTED, bg=SURFACE,
                  font=(FONT, FONT_SZ_CARD, "bold")).pack(anchor="w", padx=12, pady=(8, 2))
 
@@ -1211,13 +1315,8 @@ class TideApp:
             # ── Séparateur de jour ──────────────────────────────────────
             if ev_date not in days_seen:
                 days_seen.add(ev_date)
-                if ev_date == today:
-                    day_lbl = I18N_TODAY
-                elif ev_date == today + timedelta(days=1):
-                    day_lbl = I18N_TOMORROW
-                else:
-                    day_lbl = (f"{I18N_WEEKDAYS_SHORT[ev_date.weekday()]}"
-                               f" {ev_date.strftime('%d/%m')}")
+                # Afficher la date complète : "Lundi 20 avril 2026"
+                day_lbl = self._fmt_date_long_full(ev_date)
                 tk.Label(parent, text=day_lbl, fg=ACCENT, bg=SURFACE,
                          font=(FONT, 8, "bold")).pack(anchor="w", padx=12, pady=(4, 1))
 
@@ -1265,14 +1364,14 @@ class TideApp:
         card = self._card(parent)
         card.pack(fill="both", expand=True)
         today = datetime.now(PARIS).date()
-        chart_title = (
-            I18N_CHART_TODAY
-            if self.current_date == today
-            else (f"{I18N_CHART_OTHER} — {self.current_date.strftime('%d/%m/%Y')}"
-                  f"  +  {(self.current_date + timedelta(days=1)).strftime('%d/%m/%Y')}")
-        )
-        tk.Label(card, text=chart_title, fg=MUTED, bg=SURFACE,
-                 font=(FONT, 8, "bold")).pack(anchor="w", padx=16, pady=(10, 4))
+        d1 = self._fmt_date_long(self.current_date)
+        d2 = self._fmt_date_long(self.current_date + timedelta(days=1))
+        chart_title = f"{I18N_CARD_CHART} — {d1}  +  {d2}"
+        # Titre de la carte + sous-titre avec les dates
+        tk.Label(card, text=I18N_CARD_CHART, fg=MUTED, bg=SURFACE,
+                 font=(FONT, FONT_SZ_CARD, "bold")).pack(anchor="w", padx=16, pady=(10, 0))
+        tk.Label(card, text=chart_title, fg=ACCENT, bg=SURFACE,
+                 font=(FONT, 7)).pack(anchor="w", padx=16, pady=(0, 4))
 
         # Données complètes J + J+1 pour la courbe
         all_data = getattr(self, "data_all", self.data)
@@ -1486,19 +1585,51 @@ class TideApp:
     # ------------------------------------------------------------------
 
     def _schedule_live(self) -> None:
-        """Planifie le prochain appel de ``_live_tick`` dans 60 secondes."""
+        """Planifie le prochain appel de ``_live_tick`` dans 60 secondes.
+
+        ``root.after(ms, func)`` est la méthode Tkinter pour planifier
+        une fonction différée.  Elle retourne un identifiant (job_id) qui
+        permet d'annuler le rappel via ``root.after_cancel(job_id)``.
+        """
         self._live_job = self.root.after(60_000, self._live_tick)
 
     def _live_tick(self) -> None:
         """Callback exécuté toutes les 60 s pour rafraîchir horloge et graphique.
 
-        Met à jour :
-        1. L'horloge de marée (angle de l'aiguille, heure, hauteur).
-        2. Le repère « Maintenant » sur le graphique (ligne + point).
+        Actions effectuées à chaque tick :
+        1. Vérification du passage à minuit → rechargement complet si nécessaire.
+        2. Redessinage de l'horloge (aiguille, hauteur, direction).
+        3. Déplacement du repère « Maintenant » sur le graphique.
+
+        Le passage à minuit est détecté en comparant la date courante
+        affichée (``self.current_date``) avec ``datetime.now(PARIS).date()``.
+        Si elles diffèrent alors que l'on était sur « aujourd'hui », cela
+        signifie que minuit vient de passer : on recharge les données du
+        nouveau jour et on met à jour le calendrier.
         """
+        today = datetime.now(PARIS).date()
+
+        # ── Détection du passage à minuit ─────────────────────────────
+        # Si current_date était aujourd'hui et qu'il vient de changer,
+        # on est passés à minuit : rechargement complet nécessaire.
+        if hasattr(self, "_was_today") and self._was_today and self.current_date != today:
+            # Mise à jour de la date courante vers le nouveau jour
+            self.current_date = today
+            # Rechargement des données (J nouveau + J+1)
+            self.load_data()
+            return   # load_data planifiera un nouveau live tick
+
+        # Mémoriser si on était sur aujourd'hui (pour la prochaine vérification)
+        self._was_today = (self.current_date == today)
+
+        # ── Rafraîchissement de l'horloge ─────────────────────────────
         if hasattr(self, "clock_canvas") and self.clock_canvas.winfo_exists():
             self.redraw_clock()
+
+        # ── Déplacement du trait « Maintenant » sur le graphique ───────
         self._update_now_line()
+
+        # ── Replanification du prochain tick ──────────────────────────
         self._schedule_live()
 
     def _update_now_line(self) -> None:
@@ -1548,19 +1679,22 @@ class TideApp:
     def prev_day(self) -> None:
         """Recule d'un jour et recharge les données."""
         self.current_date -= timedelta(days=1)
-        self.date_label.config(text=self.current_date.strftime("%Y-%m-%d"))
+        if hasattr(self, "date_label"):
+            self.date_label.config(text=self._fmt_date_long(self.current_date))
         self.load_data()
 
     def next_day(self) -> None:
         """Avance d'un jour et recharge les données."""
         self.current_date += timedelta(days=1)
-        self.date_label.config(text=self.current_date.strftime("%Y-%m-%d"))
+        if hasattr(self, "date_label"):
+            self.date_label.config(text=self._fmt_date_long(self.current_date))
         self.load_data()
 
     def today(self) -> None:
         """Revient à la date d'aujourd'hui et recharge les données."""
         self.current_date = datetime.now(PARIS).date()
-        self.date_label.config(text=self.current_date.strftime("%Y-%m-%d"))
+        if hasattr(self, "date_label"):
+            self.date_label.config(text=self._fmt_date_long(self.current_date))
         self.load_data()
 
 
@@ -1574,3 +1708,4 @@ if __name__ == "__main__":
     root.minsize(900, 600)
     app = TideApp(root)
     root.mainloop()
+# Horloge-Marée_V3.0.py Version 3.0
