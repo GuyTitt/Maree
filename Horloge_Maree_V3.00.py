@@ -1,4 +1,4 @@
-# Horloge-Marée_V3.01.py Version 3.01
+# Horloge-Marée_V3.0.py Version 3.0
 """Application pédagogique d'affichage des marées.
 
 Ce module constitue un exemple complet d'application Python/Tkinter
@@ -29,9 +29,8 @@ Example::
     python claude13.py
 """
 
-version = ("","Horloge_Marée","py","3.01")
+version = ("","Horloge_Marée","py","3.0")
 print(f"{version[0]}/{version[1]}.{version[2]} version [{version[3]}]")
-
 
 # ---------------------------------------------------------------------------
 # Imports — bibliothèques standard d'abord, puis tierces, puis locales
@@ -1045,143 +1044,107 @@ class TideApp:
             return
 
         # ── Arcs PM/BM ─────────────────────────────────────────────────
-        # Algorithme :
-        # 1. Trouver l'événement "pivot" : le dernier événement PASSÉ.
-        #    Il détermine la couleur de l'arc en cours (ex. BM passée → arc cyan).
-        # 2. Si aucun événement passé (on est avant le 1er de la journée),
-        #    on crée un arc synthétique [now → 1er événement futur] dont la
-        #    couleur est déduite du type du 1er événement.
-        # 3. On construit ensuite 3 arcs supplémentaires (total ≤ 4 sur le cadran).
+        # Principe : on prend les événements (passés récents + futurs)
+        # et on trace un arc entre chaque paire consécutive.
+        # Couleur : PM→BM = BM_COL (orange), BM→PM = PM_COL (cyan).
+        # Arc en cours : start = now (partie passée effacée).
         all_ev_src = getattr(self, "events_all", self.events)
 
-        # Séparer passés et futurs
-        past_evs   = [ev for ev in all_ev_src
-                      if parse_local(ev["time"]).timestamp() <= now_ts]
-        future_evs = [ev for ev in all_ev_src
-                      if parse_local(ev["time"]).timestamp() >  now_ts]
+        # Tous les événements disponibles (J + J+1)
+        # On ne garde que ceux qui ont une fin > maintenant
+        # et un début < maintenant + 24h
+        ev_pairs = []
+        for i in range(len(all_ev_src) - 1):
+            ev_a  = all_ev_src[i]
+            ev_b  = all_ev_src[i + 1]
+            ts_a  = parse_local(ev_a["time"]).timestamp()
+            ts_b  = parse_local(ev_b["time"]).timestamp()
+            # Ignorer les arcs entièrement passés ou entièrement hors fenêtre
+            if ts_b < now_ts:
+                continue
+            if ts_a > now_ts + window_sec:
+                break
+            ev_pairs.append((ev_a, ev_b, ts_a, ts_b))
 
-        # ── Construction des paires d'arcs ────────────────────────────
-        # Chaque paire = (ev_start, ev_end, ts_start, ts_end, color, in_progress)
-        # où in_progress = True si l'aiguille est entre les deux bornes.
-        arc_specs = []   # liste de tuples (ts_start, ts_end, color, in_progress)
+        # Limiter à 4 arcs
+        ev_pairs = ev_pairs[:4]
 
-        if past_evs:
-            # Cas normal : un événement passé existe → arc en cours
-            last_past = past_evs[-1]
-            ts_last   = parse_local(last_past["time"]).timestamp()
-            # La couleur de l'arc en cours dépend du type de l'événement passé :
-            # si dernier passé = PM → on descend vers BM → orange
-            # si dernier passé = BM → on monte vers PM → cyan
-            col_current = BM_COL if last_past["type"] == "PM" else PM_COL
-
-            # Premier arc : du dernier passé (tronqué à now) vers le 1er futur
-            if future_evs:
-                ts_next = parse_local(future_evs[0]["time"]).timestamp()
-                arc_specs.append((now_ts, ts_next, col_current, True))
-                # Arcs suivants : jusqu'à 3 paires consécutives d'événements futurs
-                for i in range(len(future_evs) - 1):
-                    if len(arc_specs) >= 4:
-                        break
-                    ts_a = parse_local(future_evs[i]["time"]).timestamp()
-                    ts_b = parse_local(future_evs[i + 1]["time"]).timestamp()
-                    # Couleur : basée sur le type de l'événement de départ
-                    col = BM_COL if future_evs[i]["type"] == "PM" else PM_COL
-                    arc_specs.append((ts_a, ts_b, col, False))
-            else:
-                # Aucun futur : arc jusqu'à now + 12h25 (fin de cycle estimée)
-                arc_specs.append((now_ts, now_ts + 44700, col_current, True))
-        else:
-            # Cas spécial : on est avant TOUS les événements de la journée.
-            # (ex. 00:01 avec premier événement à 03:10)
-            # → Arc synthétique [now → 1er futur], couleur déduite du 1er futur :
-            #   si 1er futur = PM → on monte → cyan (PM_COL)
-            #   si 1er futur = BM → on descend → orange (BM_COL)
-            if future_evs:
-                ts_first = parse_local(future_evs[0]["time"]).timestamp()
-                col_first = PM_COL if future_evs[0]["type"] == "PM" else BM_COL
-                arc_specs.append((now_ts, ts_first, col_first, True))
-                # Puis 3 arcs entre événements futurs consécutifs
-                for i in range(len(future_evs) - 1):
-                    if len(arc_specs) >= 4:
-                        break
-                    ts_a = parse_local(future_evs[i]["time"]).timestamp()
-                    ts_b = parse_local(future_evs[i + 1]["time"]).timestamp()
-                    col  = BM_COL if future_evs[i]["type"] == "PM" else PM_COL
-                    arc_specs.append((ts_a, ts_b, col, False))
-
-        # ── Tracé des arcs ────────────────────────────────────────────
         OVERLAP_S = CLK_OVERLAP_MIN * 60
         ar = r - CLK_ARC_RADIUS_IN
 
-        for idx, (ts_s, ts_e, col, in_prog) in enumerate(arc_specs):
-            start_tk = now_tk if in_prog else _ts_to_tk(ts_s)
-            end_tk   = _ts_to_tk(ts_e)
-            extent   = end_tk - start_tk
+        for idx, (ev_a, ev_b, ts_a, ts_b) in enumerate(ev_pairs):
+            in_progress = ts_a <= now_ts <= ts_b
+
+            # Couleur : PM→BM = orange (descente), BM→PM = cyan (montée)
+            col = BM_COL if ev_a["type"] == "PM" else PM_COL
+
+            # Angles Tkinter
+            start_tk = now_tk if in_progress else _ts_to_tk(ts_a)
+            end_tk   = _ts_to_tk(ts_b)
+
+            # extent : toujours négatif = sens horaire dans Tkinter
+            extent = end_tk - start_tk
             while extent >= 0:
                 extent -= 360.0
+            # Sécurité : pas plus d'un tour complet
             if extent < -355:
                 extent = -355
 
-            # Chevauchement avec arc adjacent → mince
+            # Chevauchement avec adjacent (arc mince)
             thin = False
             if idx > 0:
-                thin = thin or abs(ts_s - arc_specs[idx-1][1]) < OVERLAP_S
-            if idx < len(arc_specs) - 1:
-                thin = thin or abs(ts_e - arc_specs[idx+1][0]) < OVERLAP_S
+                _, _, _, prev_ts_b = ev_pairs[idx-1]
+                thin = thin or abs(ts_a - prev_ts_b) < OVERLAP_S
+            if idx < len(ev_pairs) - 1:
+                _, _, next_ts_a, _ = ev_pairs[idx+1]
+                thin = thin or abs(ts_b - next_ts_a) < OVERLAP_S
 
             w = CLK_ARC_WIDTH_THIN if thin else CLK_ARC_WIDTH
             c.create_arc(cx-ar, cy-ar, cx+ar, cy+ar,
                          start=start_tk, extent=extent,
                          style="arc", outline=col, width=w)
 
-        # ── Bulles sur les événements futurs visibles ─────────────────
-        # Collecter les timestamps d'événements impliqués dans les arcs
-        bubble_evs: list[dict] = []
-        seen_times: set = set()
-        # Ajouter tous les événements futurs des arcs (bornes de fin = ts_e)
-        for ts_s, ts_e, col, in_prog in arc_specs:
-            # La borne de fin correspond à un événement réel si ts_e > now_ts
-            for ev in all_ev_src:
-                ts_ev = parse_local(ev["time"]).timestamp()
-                if abs(ts_ev - ts_e) < 60 and ev["time"] not in seen_times:
-                    seen_times.add(ev["time"])
-                    bubble_evs.append(ev)
-                # Aussi la borne de début si c'est un événement futur non tronqué
-                if not in_prog and abs(ts_ev - ts_s) < 60 and ev["time"] not in seen_times:
-                    seen_times.add(ev["time"])
-                    bubble_evs.append(ev)
+        # ── Bulles sur le bord de l'arc ───────────────────────────────
+        shown_evs: set = set()
+        for ev_a, ev_b, ts_a, ts_b in ev_pairs:
+            for ev, ts_ev in ((ev_a, ts_a), (ev_b, ts_b)):
+                ev_id = ev["time"]
+                if ev_id in shown_evs:
+                    continue
+                if ts_ev < now_ts - 120:   # passé > 2 min → pas de bulle
+                    continue
+                shown_evs.add(ev_id)
 
-        for ev in bubble_evs:
-            ts_ev    = parse_local(ev["time"]).timestamp()
-            trig     = _ts_to_trig(ts_ev)
-            col      = PM_COL if ev["type"] == "PM" else BM_COL
+                trig = _ts_to_trig(ts_ev)
+                col  = PM_COL if ev["type"] == "PM" else BM_COL
 
-            anchor_r = ar + CLK_ARC_WIDTH // 2 + 4
-            ax_pt    = cx + math.cos(trig) * anchor_r
-            ay_pt    = cy + math.sin(trig) * anchor_r
+                anchor_r = ar + CLK_ARC_WIDTH // 2 + 4
+                ax_pt = cx + math.cos(trig) * anchor_r
+                ay_pt = cy + math.sin(trig) * anchor_r
 
-            right = math.cos(trig) >= 0
-            bx    = (cx + r + margin - CLK_BUBBLE_OFFSET if right
-                     else cx - r - margin + CLK_BUBBLE_OFFSET)
-            by    = ay_pt
+                right = math.cos(trig) >= 0
+                bx    = cx + r + margin - CLK_BUBBLE_OFFSET if right else cx - r - margin + CLK_BUBBLE_OFFSET
+                by    = ay_pt
 
-            c.create_line(ax_pt, ay_pt, bx, by, fill=col, width=1, dash=(3, 2))
+                c.create_line(ax_pt, ay_pt, bx, by,
+                              fill=col, width=1, dash=(3, 2))
 
-            dt_ev     = parse_local(ev["time"])
-            label_txt = f"{ev['type']} {dt_ev.strftime('%H:%M')}"
-            bw   = len(label_txt) * CLK_BUBBLE_CHAR_W * 1.3 + CLK_BUBBLE_PX * 2 + 6
-            bh   = CLK_BUBBLE_BH + 4
-            bx0  = bx if right else bx - bw
-            bx1  = bx0 + bw
-            by0  = by - bh / 2
-            by1  = by + bh / 2
-            rr   = 4
-            pts  = [bx0+rr, by0, bx1-rr, by0, bx1, by0+rr, bx1, by1-rr,
-                    bx1-rr, by1, bx0+rr, by1, bx0, by1-rr, bx0, by0+rr]
-            c.create_polygon(pts, fill=SURFACE, outline=col, width=1, smooth=True)
-            c.create_text((bx0+bx1)/2, (by0+by1)/2,
-                          text=label_txt, fill=col,
-                          font=(FONT, FONT_SZ_BUBBLE+1, "bold"))
+                dt_ev     = parse_local(ev["time"])
+                label_txt = f"{ev['type']} {dt_ev.strftime('%H:%M')}"
+                bw   = len(label_txt) * CLK_BUBBLE_CHAR_W * 1.3 + CLK_BUBBLE_PX * 2 + 6
+                bh   = CLK_BUBBLE_BH + 4
+                bx0  = bx if right else bx - bw
+                bx1  = bx0 + bw
+                by0  = by - bh / 2
+                by1  = by + bh / 2
+                rr   = 4
+                pts  = [bx0+rr, by0, bx1-rr, by0, bx1, by0+rr, bx1, by1-rr,
+                        bx1-rr, by1, bx0+rr, by1, bx0, by1-rr, bx0, by0+rr]
+                c.create_polygon(pts, fill=SURFACE, outline=col,
+                                 width=1, smooth=True)
+                c.create_text((bx0+bx1)/2, (by0+by1)/2,
+                              text=label_txt, fill=col,
+                              font=(FONT, FONT_SZ_BUBBLE+1, "bold"))
 
         # ── Aiguille ───────────────────────────────────────────────────
         hand_len = r - CLK_TICK_MAJOR_LEN - 10
@@ -1196,7 +1159,19 @@ class TideApp:
                       fill=SURFACE, outline=HAND_COL, width=2)
         c.create_oval(cx-2, cy-2, cx+2, cy+2, fill=HAND_COL, outline="")
 
-        # ── Textes centraux ────────────────────────────────────────────
+        # ── Aiguille et arcs seulement si date == aujourd'hui ────────
+        # Si l'utilisateur consulte un jour passé ou futur, l'horloge
+        # affiche uniquement le cadran vide (sans aiguille ni arcs),
+        # car il n'y a pas de "maintenant" à pointer.
+        if not state["is_today"]:
+            c.create_text(cx, cy, text="—", fill=MUTED,
+                          font=(FONT, 24, "bold"))
+            c.create_text(cx, cy + 28,
+                          text=self._fmt_date_long(self.current_date),
+                          fill=MUTED, font=(FONT, 7))
+            return   # on s'arrête ici : pas d'arcs, pas d'aiguille
+
+        # ── Textes centraux (seulement si aujourd'hui) ────────────────
         if state["is_today"] and state["current_height"] is not None:
             direction = state["direction"]
             h_color = (PM_COL  if direction == "falling"
@@ -1733,4 +1708,4 @@ if __name__ == "__main__":
     root.minsize(900, 600)
     app = TideApp(root)
     root.mainloop()
-# Horloge-Marée_V3.01.py Version 3.01
+# Horloge-Marée_V3.0.py Version 3.0
